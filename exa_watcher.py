@@ -15,7 +15,8 @@ def read_sa(file):
         file,
         names = ['id', 'name', 'state', 'code'],
         skiprows = 2,
-        delim_whitespace = True
+	sep = '\s{2,}',
+	engine = 'python'
     )
 
     table = table.loc[table['id'].str.len() == 8]

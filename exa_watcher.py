@@ -119,10 +119,10 @@ def main(args) :
 
 
     olds = []
-    for file in glob.glob('*.json'):
+    for file in glob.glob(args.olds):
         olds.append(slurm_from_json(file))
 
-    news = slurms_from_sacct('example_future_sa.txt')
+    news = slurms_from_sacct(args.sacct)
 
     compare_sa(olds, news, slack_client, slack_dm)
 

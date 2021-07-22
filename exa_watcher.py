@@ -37,8 +37,11 @@ class SlurmJob:
                 'code': self.code
             }, f)
 
-    def announce(self) -> None:
-        print(self.id)
+    def announce(self, slack_client, slack_dm) -> None:
+        slack_client.chat_postMessage(
+            channel = slack_dm,
+            text = f'Hi! Job {self.name} ({self.id}) has changed to {self.state}.'
+        )
 
 def slurm_from_json(file):
     with open(file, 'r') as f:
@@ -52,7 +55,7 @@ def slurms_from_sacct(file):
 
     return slurms
 
-def compare_sa(old, new):
+def compare_sa(old, new, client, dm):
     for new_slurm in new:
         if new_slurm.state == 'PENDING':
             continue
@@ -60,13 +63,54 @@ def compare_sa(old, new):
             try:
                 old_slurm = next(x for x in old if x.id == new_slurm.id)
                 if old_slurm.state != new_slurm.state:
-                    new_slurm.announce()
+                    new_slurm.announce(client, dm)
             except StopIteration:
-                new_slurm.announce()
+                new_slurm.announce(client, dm)
 
         new_slurm.write_json()
 
-if __name__ == '__main__':
+def make_slack_client(args):
+    error_status = False
+
+    if args.dm:
+        slack_dm = args.dm
+    else:
+        try:
+            slack_dm = os.environ['SLACK_DM']
+        except KeyError:
+            print('Please put your slack DM ID in env variable SLACK_MICROSCOPY_CHANNEL')
+            error_status = True
+
+    if args.token:
+        slack_bot_token = args.token
+    else:
+        try:
+            slack_bot_token = os.environ['SLACK_BOT_TOKEN']
+        except KeyError:
+            print('Please put your slack bot token in env variable SLACK_BOT_TOKEN')
+            error_status = True
+            slack_bot_token = False
+
+    # if the user provided a bot token we can test it even without a channel
+    if error_status and not slack_bot_token:
+        sys.exit(1)
+    
+    slack_web_client = WebClient(token=slack_bot_token)
+    try:
+        slack_web_client.auth_test()
+    except SlackApiError:
+        print('Slack authentication failed. Please check your bot token.')
+        error_status = True
+
+    # we need to check this again in case setting the channel failed
+    if error_status:
+        sys.exit(1)
+    
+    return (slack_web_client, slack_dm)
+
+def main(args) :
+    slack_client, slack_dm = make_slack_client(args)
+
 
     olds = []
     for file in glob.glob('*.json'):
@@ -74,4 +118,35 @@ if __name__ == '__main__':
 
     news = slurms_from_sacct('example_future_sa.txt')
 
-    compare_sa(olds, news)
+    compare_sa(olds, news, slack_client, slack_dm)
+
+parser = argparse.ArgumentParser(
+    description='Check for changes in slurm jobs. Requires custom sacct output (see README).'
+)
+parser.add_argument(
+    'olds',
+    type = str,
+    help = 'Glob for old slurm job JSONs'
+)
+parser.add_argument(
+    'sacct',
+    type = str,
+    help = 'Output of `sacct` command'
+)
+parser.add_argument(
+    '--token',
+    help = 'Slack bot token. If not provided, will use SLACK_BOT_TOKEN env variable',
+    type = str
+)
+parser.add_argument(
+    '--dm',
+    help = 'Slack DM ID to post to. If not provided, will use SLACK_DM env variable',
+    type = str
+)
+
+args = parser.parse_args()
+
+if __name__ == '__main__':
+    main(args)
+
+    

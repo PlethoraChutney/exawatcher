@@ -18,6 +18,8 @@ def read_sa(file):
         delim_whitespace = True
     )
 
+    table = table.iloc[len(table['id']) == 8]
+
     # convert table to list of tuples
     return list(table.itertuples(index = False, name = None))
 

@@ -62,6 +62,12 @@ def slurms_from_sacct(file):
     return slurms
 
 def compare_sa(old, new, client, dm):
+    # remove old JSONs that aren't required anymore
+    new_ids = [x.id for x in new]
+    for slurm in [x.id for x in old if x.id not in new_ids]:
+        os.remove(f'job_{slurm}.json')
+
+    # announce jobs that have changed state
     for new_slurm in new:
         if new_slurm.state == 'PENDING':
             continue

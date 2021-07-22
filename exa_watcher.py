@@ -71,9 +71,7 @@ def compare_sa(old, new, client, dm):
 
     # announce jobs that have changed state
     for new_slurm in new:
-        if new_slurm.state == 'PENDING':
-            continue
-        else:
+        if new_slurm.state != "PENDING":
             try:
                 old_slurm = next(x for x in old if x.id == new_slurm.id)
                 if old_slurm.state != new_slurm.state:

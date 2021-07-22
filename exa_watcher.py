@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import pandas as pd
-import logging
 import json
+import glob
 import os
 import argparse
 import sys
@@ -37,12 +37,41 @@ class SlurmJob:
                 'code': self.code
             }, f)
 
+    def announce(self) -> None:
+        print(self.id)
+
 def slurm_from_json(file):
     with open(file, 'r') as f:
         sacct_row = json.load(f)
         return SlurmJob((tuple(sacct_row.values())))
 
-if __name__ == '__main__':
-    rows = read_sa('example_sa.txt')
+def slurms_from_sacct(file):
+    slurms = []
+    for row in read_sa(file):
+        slurms.append(SlurmJob(row))
 
-    print(slurm_from_json('16740130_job.json'))
+    return slurms
+
+def compare_sa(old, new):
+    for new_slurm in new:
+        if new_slurm.state == 'PENDING':
+            continue
+        else:
+            try:
+                old_slurm = next(x for x in old if x.id == new_slurm.id)
+                if old_slurm.state != new_slurm.state:
+                    new_slurm.announce()
+            except StopIteration:
+                new_slurm.announce()
+
+        new_slurm.write_json()
+
+if __name__ == '__main__':
+
+    olds = []
+    for file in glob.glob('*.json'):
+        olds.append(slurm_from_json(file))
+
+    news = slurms_from_sacct('example_future_sa.txt')
+
+    compare_sa(olds, news)

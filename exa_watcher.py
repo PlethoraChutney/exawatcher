@@ -37,11 +37,17 @@ class SlurmJob:
                 'code': self.code
             }, f)
 
-    def announce(self, slack_client, slack_dm) -> None:
-        slack_client.chat_postMessage(
-            channel = slack_dm,
-            text = f'Hi! Job {self.name} ({self.id}) has changed to {self.state}.'
-        )
+    def announce(self, slack_client, slack_dm, old_state = None) -> None:
+        if old_state:
+            slack_client.chat_postMessage(
+                channel = slack_dm,
+                text = f'Hi! Job {self.name} ({self.id}) has changed from {old_state} to {self.state}.'
+            )
+        else:
+            slack_client.chat_postMessage(
+                channel = slack_dm,
+                text = f'Hi! Job {self.name} ({self.id}) has changed to {self.state}.'
+            )
 
 def slurm_from_json(file):
     with open(file, 'r') as f:
@@ -63,7 +69,7 @@ def compare_sa(old, new, client, dm):
             try:
                 old_slurm = next(x for x in old if x.id == new_slurm.id)
                 if old_slurm.state != new_slurm.state:
-                    new_slurm.announce(client, dm)
+                    new_slurm.announce(client, dm, old_slurm.state)
             except StopIteration:
                 new_slurm.announce(client, dm)
 

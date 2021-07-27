@@ -14,6 +14,7 @@ def read_sa(file):
     table = pd.read_table(
         file,
         names = ['id', 'name', 'state', 'code'],
+	dtype = {'id': str, 'name': str, 'state': str, 'code': str},
         skiprows = 2,
 	sep = '\s{2,}',
 	engine = 'python'

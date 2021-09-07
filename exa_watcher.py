@@ -37,6 +37,7 @@ def read_sa(file):
 class RunInfo:
     def __init__(self, location) -> None:
         self.location = location
+        self.dir = os.path.split(location)[0]
         self.job_type = location.split('/')[-3]
         self.table = pd.read_table(
             self.location,
@@ -51,7 +52,7 @@ class RunInfo:
             results = self.table[-4:].to_numpy()[:,1]
             resolution = results[3]
             map_loc = results[0]
-            self.addendum = f'\nFinal resolution: {resolution}\nMap at: {map_loc}'
+            self.addendum = f'\nFinal resolution: {resolution}\nMap at: {self.dir}/{map_loc}'
         else:
             self.addendum = ''
     

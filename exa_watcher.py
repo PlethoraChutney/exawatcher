@@ -62,8 +62,16 @@ class RunInfo:
                         relevant_lines.append(line)
             map_loc = relevant_lines[0].split(' ')[-1]
             resolution = relevant_lines[-1].split(' ')[-1]
-
+        
             self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
+        elif self.job_type == 'Extract':
+            with open(self.location, 'r') as f:
+                for line in f:
+                    if "Written out STAR file with" in line:
+                        match = re.search('([0-9]{1,})', line)
+                        
+            self.addendum += f'\nExtracted {match.group(1)} particles.'
+
     
     def __repr__(self) -> str:
         return f'run.out file at {self.location}'

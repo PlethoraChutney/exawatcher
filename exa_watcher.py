@@ -39,7 +39,7 @@ class RunInfo:
         self.location = glob.glob(location)[0]
         self.dir = os.path.split(self.location)[0]
         self.job_type = self.location.split('/')[-3]
-        self.addendum = '\nJob type: {self.job_type}'
+        self.addendum = f'\nJob type: {self.job_type}'
 
         if self.job_type == 'PostProcess':
             self.table = pd.read_table(

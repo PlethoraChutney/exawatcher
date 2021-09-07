@@ -5,10 +5,14 @@ import glob
 import os
 import argparse
 import sys
+import re
 from datetime import datetime
 from urllib.error import HTTPError
 from slack import WebClient
 from slack.errors import SlackApiError
+
+job_regex = 'P[0-9]{3}J[0-9]{3}'
+data_location = '/home/exacloud/gscratch/BaconguisLab/posert/'
 
 def read_sa(file):
     table = pd.read_table(
@@ -30,6 +34,30 @@ def read_sa(file):
     # convert table to list of tuples
     return list(table.itertuples(index = False, name = None))
 
+class RunInfo:
+    def __init__(self, location) -> None:
+        self.location = location
+        self.job_type = location.split('/')[-3]
+        self.table = pd.read_table(
+            self.location,
+            names = ['stat', 'value'],
+            dtype = {'stat': str, 'value': str},
+            sep = '\s{2,}',
+            engine = 'python'
+        )
+
+        if self.job_type == 'PostProcess':
+            # convert last four lines of table to numpy array, take second value of each entry
+            results = self.table[-4:].to_numpy()[:,1]
+            resolution = results[3]
+            map_loc = results[0]
+            self.addendum = f'\nFinal resolution: {resolution}\nMap at: {map_loc}'
+        else:
+            self.addendum = ''
+    
+    def __repr__(self) -> str:
+        return f'run.out file at {self.location}'
+
 class SlurmJob:
     def __init__(self, sacct_row) -> None:
         self.id, self.name, self.state, self.code = sacct_row
@@ -48,15 +76,18 @@ class SlurmJob:
 
     def announce(self, slack_client, slack_dm, old_state = None) -> None:
         if old_state:
-            slack_client.chat_postMessage(
-                channel = slack_dm,
-                text = f'Hi! Job {self.name} ({self.id}) has changed from {old_state} to {self.state}.'
-            )
+            self.message = f'Hi! Job {self.name} ({self.id}) has changed from {old_state} to {self.state}.'
         else:
-            slack_client.chat_postMessage(
-                channel = slack_dm,
-                text = f'Hi! Job {self.name} ({self.id}) has changed to {self.state}.'
-            )
+            self.message = f'Hi! Job {self.name} ({self.id}) has changed to {self.state}.'
+
+        if match := re.search(job_regex, self.name) and self.state == 'COMPLETED':
+            self.info = RunInfo(f'{data_location}/{match.group(1)}/*/job{match.group(2)}/run.out')
+            self.message += self.info.addendum
+
+        slack_client.chat_postMessage(
+            channel = slack_dm,
+            text = self.message
+        )
 
 def slurm_from_json(file):
     with open(file, 'r') as f:

@@ -39,23 +39,31 @@ class RunInfo:
         self.location = glob.glob(location)[0]
         self.dir = os.path.split(self.location)[0]
         self.job_type = self.location.split('/')[-3]
-        self.table = pd.read_table(
-            self.location,
-            names = ['stat', 'value'],
-            dtype = {'stat': str, 'value': str},
-            sep = '\s{2,}',
-            engine = 'python'
-        )
-        print(self.job_type)
+        self.addendum = '\nJob type: {self.job_type}'
 
         if self.job_type == 'PostProcess':
+            self.table = pd.read_table(
+                self.location,
+                names = ['stat', 'value'],
+                dtype = {'stat': str, 'value': str},
+                sep = '\s{2,}',
+                engine = 'python'
+            )
             # convert last four lines of table to numpy array, take second value of each entry
             results = self.table[-4:].to_numpy()[:,1]
             resolution = results[3]
             map_loc = results[0]
-            self.addendum = f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
-        else:
-            self.addendum = ''
+            self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
+        elif self.job_type == 'Refine3D':
+            relevant_lines = []
+            with open(self.location, 'r') as f:
+                for line in f:
+                    if 'Auto-refine: + Final' in line:
+                        relevant_lines.append(line)
+            map_loc = relevant_lines[0].split(' ')[-1]
+            resolution = relevant_lines[-1].split(' ')[-1]
+
+            self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
     
     def __repr__(self) -> str:
         return f'run.out file at {self.location}'

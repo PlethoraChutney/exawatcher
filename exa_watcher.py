@@ -14,12 +14,17 @@ def read_sa(file):
     table = pd.read_table(
         file,
         names = ['id', 'name', 'state', 'code'],
-	dtype = {'id': str, 'name': str, 'state': str, 'code': str},
+        dtype = {'id': str, 'name': str, 'state': str, 'code': str},
         skiprows = 2,
-	sep = '\s{2,}',
-	engine = 'python'
+        sep = '\s{2,}',
+        engine = 'python'
     )
 
+    # sub-jobs get launched as part of RELION's processing.
+    # 
+    # filtering only to ids with length 8 gets us only the
+    # primary, named job. If your queue is at a different
+    # order of magnitude of jobs, you may need to modify this
     table = table.loc[table['id'].str.len() == 8]
 
     # convert table to list of tuples

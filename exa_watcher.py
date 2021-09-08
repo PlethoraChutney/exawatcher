@@ -36,6 +36,22 @@ def read_sa(file):
     # convert table to list of tuples
     return list(table.itertuples(index = False, name = None))
 
+def make_projection(map_location):
+    # need relion_project and mrc2tif to make pngs from maps
+    if not shutil.which('relion_project') or not shutil.which('mrc2tif'):
+        raise EnvironmentError
+
+    loc_base = map_location[:-4]
+    if 'proj' in map_location:
+        return
+
+    # project map to single image (only mrc out available)
+    subprocess.run(['relion_project', '--i', map_location, '--o', loc_base+'proj.mrc'])
+    # convert mrc to png
+    subprocess.run(['mrc2tif', '-p', loc_base+'proj.mrc', loc_base+'.png'])
+
+    return loc_base+'.png'
+
 class RunInfo:
     def __init__(self, location) -> None:
         try:
@@ -44,7 +60,7 @@ class RunInfo:
             self.job_type = self.location.split('/')[-3]
             self.addendum = f'\nJob type: {self.job_type}'
             self.get_info()
-        # If there's no run.out, the location glob line excepts an IndexError
+        # If there's no run.out, the location glob line raises an IndexError
         except IndexError:
             self.addendum = f"\nI couldn't find a `run.out` file for this job. Did you set the name correctly?"
 
@@ -63,6 +79,8 @@ class RunInfo:
             resolution = results[3]
             map_loc = os.path.split(results[0])[1]
             self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
+
+            self.files.append(make_projection(f'{self.dir}/{map_loc}'))
         elif self.job_type == 'Refine3D':
             relevant_lines = []
             with open(self.location, 'r') as f:
@@ -71,8 +89,9 @@ class RunInfo:
                         relevant_lines.append(line)
             map_loc = relevant_lines[0].split(' ')[-1]
             resolution = relevant_lines[-1].split(' ')[-1]
-        
             self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
+
+            self.files.append(make_projection(f'{self.dir}/{map_loc}'))
         elif self.job_type == 'Extract':
             with open(self.location, 'r') as f:
                 for line in f:
@@ -81,17 +100,10 @@ class RunInfo:
                         
             self.addendum += f'\nExtracted {match.group(1)} particles.'
         elif self.job_type == 'Class3D':
-            if not shutil.which('relion_project') or not shutil.which('mrc2tif'):
-                return
-            
             maps_to_project = glob.glob(f'{self.dir}/run_it025_class*.mrc')
             for vol in maps_to_project:
-                if 'proj' in vol:
-                  continue
-
-                subprocess.run(['relion_project', '--i', vol, '--o', vol[:-4]+'proj.mrc'])
-                subprocess.run(['mrc2tif', '-p', vol[:-4]+'proj.mrc', vol[:-4]+'.png'])
-                self.files.append(vol[:-4]+'.png')
+                if 'proj' not in vol:
+                    self.files.append(make_projection(vol))
 
     
     def __repr__(self) -> str:
@@ -130,7 +142,7 @@ class SlurmJob:
         try:
             if self.info.files:
                 for filename in self.info.files:
-                    file_response = slack_client.files_upload(
+                    slack_client.files_upload(
                         channels = slack_dm,
                         file = filename,
                         thread_ts = result['ts'],

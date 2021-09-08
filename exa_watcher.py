@@ -6,6 +6,8 @@ import os
 import argparse
 import sys
 import re
+import shutil
+import subprocess
 from datetime import datetime
 from urllib.error import HTTPError
 from slack import WebClient
@@ -47,6 +49,7 @@ class RunInfo:
             self.addendum = f"\nI couldn't find a `run.out` file for this job. Did you set the name correctly?"
 
     def get_info(self):
+        self.files = []
         if self.job_type == 'PostProcess':
             self.table = pd.read_table(
                 self.location,
@@ -77,6 +80,18 @@ class RunInfo:
                         match = re.search('([0-9]{1,}) particles', line)
                         
             self.addendum += f'\nExtracted {match.group(1)} particles.'
+        elif self.job_type == 'Class3D':
+            if not shutil.which('relion_project') or not shutil.which('mrc2tif'):
+                return
+            
+            maps_to_project = glob.glob(f'{self.dir}/run_it025_class*.mrc')
+            for vol in maps_to_project:
+                if 'proj' in vol:
+                  continue
+
+                subprocess.run(['relion_project', '--i', vol, '--o', vol[:-4]+'proj.mrc'])
+                subprocess.run(['mrc2tif', '-p', vol[:-4]+'proj.mrc', vol[:-4]+'.png'])
+                self.files.append(vol[:-4]+'.png')
 
     
     def __repr__(self) -> str:
@@ -108,10 +123,21 @@ class SlurmJob:
             self.info = RunInfo(f'{data_location}/{match.group(1)}/*/job{match.group(2)}/run.out')
             self.message += self.info.addendum
 
-        slack_client.chat_postMessage(
+        result = slack_client.chat_postMessage(
             channel = slack_dm,
             text = self.message
         )
+        try:
+            if self.info.files:
+                for filename in self.info.files:
+                    file_response = slack_client.files_upload(
+                        channels = slack_dm,
+                        file = filename,
+                        thread_ts = result['ts'],
+                        filetype = 'png'
+                    )
+        except AttributeError:
+            pass
 
 def slurm_from_json(file):
     with open(file, 'r') as f:

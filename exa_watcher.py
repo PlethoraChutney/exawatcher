@@ -61,7 +61,7 @@ class RunInfo:
             # convert last four lines of table to numpy array, take second value of each entry
             results = self.table[-4:].to_numpy()[:,1]
             resolution = results[3]
-            map_loc = results[0]
+            map_loc = os.path.split(results[0])[1]
             self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
         elif self.job_type == 'Refine3D':
             relevant_lines = []

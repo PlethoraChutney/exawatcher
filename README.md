@@ -14,7 +14,7 @@ Add
 
 to your submission script. When you're submitting a job, in the "Queue name" field,
 add a string to identify the project and job number. By default, ExaWatcher looks
-for cryoSPARC format, i.e., `P[job-name]J[job-number]`. You can change this in
+for cryoSPARC format, i.e., `P[project-name]J[job-number]`. You can change this in
 `exa_watcher.py`. You'll definitely have to change where ExaWatcher looks for your
 files from the default of my username.
 

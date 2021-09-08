@@ -68,7 +68,7 @@ class RunInfo:
             with open(self.location, 'r') as f:
                 for line in f:
                     if "Written out STAR file with" in line:
-                        match = re.search('([0-9]{1,})', line)
+                        match = re.search('([0-9]{1,}) particles', line)
                         
             self.addendum += f'\nExtracted {match.group(1)} particles.'
 

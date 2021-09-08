@@ -44,7 +44,7 @@ class RunInfo:
             self.get_info()
         # If there's no run.out, the location glob line excepts an IndexError
         except IndexError:
-            self.addendum = ''
+            self.addendum = f"I couldn't find a `run.out` file for this job. Did you set the name correctly?"
 
     def get_info(self):
         if self.job_type == 'PostProcess':

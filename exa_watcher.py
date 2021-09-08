@@ -83,7 +83,7 @@ class RunInfo:
             try:
                 self.files.append(make_projection(f'{self.dir}/{map_loc}'))
             except EnvironmentError:
-                self.addendum += "I couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
         elif self.job_type == 'Refine3D':
             relevant_lines = []
             with open(self.location, 'r') as f:
@@ -96,7 +96,7 @@ class RunInfo:
             try:
                 self.files.append(make_projection(f'{self.dir}/{map_loc}'))
             except EnvironmentError:
-                self.addendum += "I couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
         elif self.job_type == 'Extract':
             with open(self.location, 'r') as f:
                 for line in f:
@@ -111,7 +111,7 @@ class RunInfo:
                     try:
                         self.files.append(make_projection(vol))
                     except EnvironmentError:
-                        self.addendum += "I couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                        self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
                         break
 
     

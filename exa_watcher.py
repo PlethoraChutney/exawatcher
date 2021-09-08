@@ -86,7 +86,7 @@ class RunInfo:
             with open(self.location, 'r') as f:
                 for line in f:
                     if 'Auto-refine: + Final' in line:
-                        relevant_lines.append(line)
+                        relevant_lines.append(line.rsplit())
             map_loc = relevant_lines[0].split(' ')[-1]
             resolution = relevant_lines[-1].split(' ')[-1]
             self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'

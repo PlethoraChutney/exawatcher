@@ -13,7 +13,7 @@ from urllib.error import HTTPError
 from slack import WebClient
 from slack.errors import SlackApiError
 
-job_regex = 'P([0-9]{3})J([0-9]{3})'
+job_regex = 'P(.*)J([0-9]{3})'
 data_location = '/home/exacloud/gscratch/BaconguisLab/posert'
 
 def read_sa(file):

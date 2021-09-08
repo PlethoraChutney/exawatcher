@@ -36,11 +36,17 @@ def read_sa(file):
 
 class RunInfo:
     def __init__(self, location) -> None:
-        self.location = glob.glob(location)[0]
-        self.dir = os.path.split(self.location)[0]
-        self.job_type = self.location.split('/')[-3]
-        self.addendum = f'\nJob type: {self.job_type}'
+        try:
+            self.location = glob.glob(location)[0]
+            self.dir = os.path.split(self.location)[0]
+            self.job_type = self.location.split('/')[-3]
+            self.addendum = f'\nJob type: {self.job_type}'
+            self.get_info()
+        # If there's no run.out, the location glob line excepts an IndexError
+        except IndexError:
+            self.addendum = ''
 
+    def get_info(self):
         if self.job_type == 'PostProcess':
             self.table = pd.read_table(
                 self.location,

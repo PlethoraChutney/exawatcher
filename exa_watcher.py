@@ -106,6 +106,7 @@ class RunInfo:
             self.addendum += f'\nExtracted {match.group(1)} particles.'
         elif self.job_type == 'Class3D':
             maps_to_project = glob.glob(f'{self.dir}/run_it025_class*.mrc')
+            self.addendum += f'\nMap location: `{self.dir}/run_it025_class*.mrc`'
             for vol in maps_to_project:
                 if 'proj' not in vol:
                     try:
@@ -114,7 +115,16 @@ class RunInfo:
                         self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
                         break
         elif self.job_type == 'InitialModel':
-            self.files.append(make_projection(f'{self.dir}/run_it300_class001.mrc'))
+            maps_to_project = glob.glob(f'{self.dir}/run_it300_class*.mrc')
+            print(maps_to_project)
+            for vol in maps_to_project:
+                if 'proj' not in vol:
+                    self.addendum += f"\nMap location: `{self.dir}/run_it300_class*.mrc`"
+                    try:
+                        self.files.append(make_projection(vol))
+                    except EnvironmentError:
+                        self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                        break
 
     
     def __repr__(self) -> str:

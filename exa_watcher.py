@@ -113,6 +113,8 @@ class RunInfo:
                     except EnvironmentError:
                         self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
                         break
+        elif self.job_type == 'InitialModel':
+            self.files.append(make_projection(f'{self.dir}/run_it300_class001.mrc'))
 
     
     def __repr__(self) -> str:

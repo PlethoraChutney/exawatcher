@@ -46,9 +46,13 @@ def make_projection(map_location):
         return
 
     # project map to single image (only mrc out available)
-    subprocess.run(['relion_project', '--i', map_location, '--o', loc_base+'proj.mrc'])
+    subprocess.run(['relion_project', '--i', map_location, '--o', loc_base+'proj.mrc'],
+      stdout=subprocess.DEVNULL
+    )
     # convert mrc to png
-    subprocess.run(['mrc2tif', '-p', loc_base+'proj.mrc', loc_base+'.png'])
+    subprocess.run(['mrc2tif', '-p', loc_base+'proj.mrc', loc_base+'.png'],
+      stdout=subprocess.DEVNULL
+    )
 
     return loc_base+'.png'
 

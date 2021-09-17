@@ -121,7 +121,6 @@ class RunInfo:
                         break
         elif self.job_type == 'InitialModel':
             maps_to_project = glob.glob(f'{self.dir}/run_it300_class*.mrc')
-            print(maps_to_project)
             for vol in maps_to_project:
                 if 'proj' not in vol:
                     self.addendum += f"\nMap location: `{self.dir}/run_it300_class*.mrc`"
@@ -130,6 +129,8 @@ class RunInfo:
                     except EnvironmentError:
                         self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
                         break
+        elif self.job_type == 'CtfRefine':
+            self.files.append(f'{self.dir}/logfile.pdf')
 
     
     def __repr__(self) -> str:

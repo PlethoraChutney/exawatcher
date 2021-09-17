@@ -13,10 +13,22 @@ from urllib.error import HTTPError
 from slack import WebClient
 from slack.errors import SlackApiError
 
+####### Hard-coded values #######
+#
+# This will get you anything after P and three numbers after J in a string matching P[whatever]J###
 job_regex = 'P(.*)J([0-9]{3})'
+#
+# Change this for each user. Should probably be an argument.
+# This is where you put your project directories, i.e., what comes after P in the above
 data_location = '/home/exacloud/gscratch/BaconguisLab/posert'
 
+projection_error_message = "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+
+####### Read slurm and RELION info #######
+
 def read_sa(file):
+    # Note that this is hard-coded. You need to follow the sacct command rules
+    # from the README
     table = pd.read_table(
         file,
         names = ['id', 'name', 'state', 'code'],
@@ -71,6 +83,7 @@ class RunInfo:
 
     def get_info(self):
         self.files = []
+
         if self.job_type == 'PostProcess':
             self.table = pd.read_table(
                 self.location,
@@ -88,7 +101,8 @@ class RunInfo:
             try:
                 self.files.append(make_projection(f'{self.dir}/{map_loc}'))
             except EnvironmentError:
-                self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                self.addendum += projection_error_message
+        
         elif self.job_type == 'Refine3D':
             relevant_lines = []
             with open(self.location, 'r') as f:
@@ -101,7 +115,8 @@ class RunInfo:
             try:
                 self.files.append(make_projection(f'{self.dir}/{map_loc}'))
             except EnvironmentError:
-                self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                self.addendum += projection_error_message
+        
         elif self.job_type == 'Extract':
             with open(self.location, 'r') as f:
                 for line in f:
@@ -109,6 +124,7 @@ class RunInfo:
                         match = re.search('([0-9]{1,}) particles', line)
                         
             self.addendum += f'\nExtracted {match.group(1)} particles.'
+        
         elif self.job_type == 'Class3D':
             maps_to_project = glob.glob(f'{self.dir}/run_it025_class*.mrc')
             self.addendum += f'\nMap location: `{self.dir}/run_it025_class*.mrc`'
@@ -117,8 +133,9 @@ class RunInfo:
                     try:
                         self.files.append(make_projection(vol))
                     except EnvironmentError:
-                        self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                        self.addendum += projection_error_message
                         break
+        
         elif self.job_type == 'InitialModel':
             maps_to_project = glob.glob(f'{self.dir}/run_it300_class*.mrc')
             for vol in maps_to_project:
@@ -127,8 +144,9 @@ class RunInfo:
                     try:
                         self.files.append(make_projection(vol))
                     except EnvironmentError:
-                        self.addendum += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+                        self.addendum += projection_error_message
                         break
+        
         elif self.job_type == 'CtfRefine':
             self.files.append(f'{self.dir}/logfile.pdf')
 

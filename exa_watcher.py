@@ -126,7 +126,10 @@ class RunInfo:
             self.addendum += f'\nExtracted {match.group(1)} particles.'
         
         elif self.job_type == 'Class3D':
-            maps_to_project = glob.glob(f'{self.dir}/run_it025_class*.mrc')
+            mrcs = glob.glob(f'{self.dir}/run_it*_class*.mrc')
+            iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
+            iterations.sort()
+            maps_to_project = glob.glob(f'{self.dir}/run_it{iterations[-1]}_class*.mrc')
             self.addendum += f'\nMap location: `{self.dir}/run_it025_class*.mrc`'
             for vol in maps_to_project:
                 if 'proj' not in vol:

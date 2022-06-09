@@ -129,8 +129,17 @@ class RunInfo:
             mrcs = glob.glob(f'{self.dir}/run_it*_class*.mrc')
             iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
             iterations.sort()
-            maps_to_project = glob.glob(f'{self.dir}/run_it{iterations[-1]}_class*.mrc')
+            max_it = iterations[-1]
+            maps_to_project = glob.glob(f'{self.dir}/run_it{max_it}_class*.mrc')
+
+            import starfile
+            star_files = starfile.read(f'{self.dir}/run_it{max_it}_data.star')
+            particle_data = star_files['particles']
+            class_counts = particle_data['rlnClassNumber'].value_counts().to_dict()
+
             self.addendum += f'\nMap location: `{self.dir}/run_it025_class*.mrc`'
+            for rln_class in class_counts:
+                self.addendum += f'\nParticles in Class {rln_class}: {class_counts[rln_class]}'
             for vol in maps_to_project:
                 if 'proj' not in vol:
                     try:

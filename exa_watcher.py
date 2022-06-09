@@ -226,6 +226,10 @@ def compare_sa(old, new, client, dm):
 
         new_slurm.write_json()
 
+def manual_process(job_name, client, dm):
+    job = SlurmJob(['Manual Process', job_name, 'COMPLETED', '0:0'])
+    job.announce(client, dm, 'MANUAL')
+
 def make_slack_client(args):
     error_status = False
 
@@ -277,6 +281,9 @@ def main(args) :
 
     compare_sa(olds, news, slack_client, slack_dm)
 
+    if args.manual_process:
+        manual_process(args.manual_process, slack_client, slack_dm)
+
 parser = argparse.ArgumentParser(
     description='Check for changes in slurm jobs. Requires custom sacct output (see README).'
 )
@@ -298,6 +305,11 @@ parser.add_argument(
 parser.add_argument(
     '--dm',
     help = 'Slack DM ID to post to. If not provided, will use SLACK_DM env variable',
+    type = str
+)
+parser.add_argument(
+    '--manual-process',
+    help = 'Manually process a job name. Will still run SLURM process',
     type = str
 )
 

@@ -133,13 +133,44 @@ class RunInfo:
             maps_to_project = glob.glob(f'{self.dir}/run_it{max_it}_class*.mrc')
 
             import starfile
-            star_files = starfile.read(f'{self.dir}/run_it{max_it}_data.star')
-            particle_data = star_files['particles']
-            class_counts = particle_data['rlnClassNumber'].value_counts().to_dict()
+            import matplotlib.pyplot as plt
+            classes_over_time = None
+
+            for iteration in list(set(iterations)):
+                pd.options.mode.chained_assignment = None
+                star_files = starfile.read(f'{self.dir}/run_it{iteration}_model.star')
+                cm = star_files['model_classes']
+                cm = cm[['rlnReferenceImage', 'rlnClassDistribution']]
+                cm['rlnReferenceImage'] = cm.rlnReferenceImage.apply(lambda x: re.search('class[0-9]{3}', x).group(0))
+                cm.rename(columns = {'rlnReferenceImage': 'Class','rlnClassDistribution': iteration}, inplace = True)
+                cm = cm.set_index('Class')
+
+                if classes_over_time is None:
+                    classes_over_time = cm
+                else:
+                    classes_over_time = classes_over_time.join(cm)
 
             self.addendum += f'\nMap location: `{self.dir}/run_it025_class*.mrc`'
-            for rln_class in class_counts:
-                self.addendum += f'\nParticles in Class {rln_class}: {class_counts[rln_class]}'
+
+            class_memb_table = classes_over_time[iterations[-1]]
+            self.addendum += f'\nClass Membership (fraction of particles)\n```{str(class_memb_table)}```'
+
+            # sort columns then transpose so that each column is a class
+            classes_over_time = classes_over_time.reindex(sorted(classes_over_time.columns), axis = 1)
+            classes_over_time = classes_over_time.transpose()
+            iteration_nums = [int(x) for x in list(classes_over_time.index)]
+
+
+            fig = plt.figure()
+            for rln_class in classes_over_time.columns:
+                plt.plot(iteration_nums, classes_over_time[rln_class], '-o')
+
+            plt.xlabel('Iteration number')
+            plt.ylabel('Percent particle membership')
+
+            fig.savefig('classes_over_time.png')
+            self.files.append('classes_over_time.png')
+
             for vol in maps_to_project:
                 if 'proj' not in vol:
                     try:

@@ -8,6 +8,7 @@ import sys
 import re
 import shutil
 import subprocess
+import logging
 from datetime import datetime
 from urllib.error import HTTPError
 from slack import WebClient
@@ -23,6 +24,65 @@ job_regex = 'P(.*)J([0-9]{3})'
 data_location = '/home/exacloud/gscratch/BaconguisLab/posert'
 
 projection_error_message = "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+
+class Database(object):
+    def __init__(self, db_path):
+        self.db_path = db_path
+        self.db_dir = os.path.split(db_path)[0]
+
+        self.lock_file = os.path.join(self.db_dir, '.dblock')
+        try:
+            with open(self.db_path, 'r') as f:
+                self.db = json.load(f)
+        except FileNotFoundError:
+            self.db = {}
+
+    def check_lock(self):
+        if os.path.exists(self.lock_file):
+            logging.info('Lock file exists. Exiting.')
+            sys.exit(0)
+        else:
+            open(self.lock_file, 'a').close()
+
+    def commit_change(self):
+        with open(self.db_path, 'w') as f:
+            json.dump(self.db, f)
+
+    def close_db(self):
+        self.commit_change()
+        os.remove(self.lock_file)
+
+    def update_entry(self, entry, state):
+        entry = os.path.expanduser(entry)
+        old_state = self.db.get(entry)
+        self.db[entry] = state
+        self.commit_change()
+        return [old_state == state, old_state]
+
+class SlurmJob(object):
+    def __init__(self, path, slack_info):
+        self.path = path
+        self.slack_client = slack_info['client']
+        self.slack_dm = slack_info['dm']
+        self.message = ''
+        self.files = []
+
+    def announce(self):
+        result = self.slack_client.chat_postMessage(
+            channel = self.slack_dm,
+            text = self.message
+        )
+        for filename in self.info.files:
+            self.slack_client.files_upload(
+                channels = self.slack_dm,
+                file = filename,
+                thread_ts = result['ts'],
+                filetype = 'png'
+            )
+    
+
+
+
 
 ####### Read slurm and RELION info #######
 
@@ -313,47 +373,53 @@ def make_slack_client(args):
     return (slack_web_client, slack_dm)
 
 def main(args) :
-    slack_client, slack_dm = make_slack_client(args)
+    db = Database(args.db)
+    if args.new_job:
+        db.update_entry(args.new_job, 'Pending')
 
+    if not (args.process_all or args.process_job):
+        sys.exit(0)
 
-    olds = []
-    for file in glob.glob(args.olds):
-        olds.append(slurm_from_json(file))
+    # check lock after adding new jobs so that we can add jobs
+    # during processing. Since the DB is read only at startup, this
+    # shouldn't present any issues, and lets us include jobs in RELION
+    # launch scripts.
+    db.check_lock()
 
-    news = slurms_from_sacct(args.sacct)
+    if args.process_all:
+        print('Processing all')
+        jobs_to_process = list(db.db.keys())
+    else:
+        jobs_to_process = args.process_job
 
-    compare_sa(olds, news, slack_client, slack_dm)
+    print(jobs_to_process)
 
-    if args.manual_process:
-        manual_process(args.manual_process, slack_client, slack_dm)
+    db.close_db()
 
 parser = argparse.ArgumentParser(
     description='Check for changes in slurm jobs. Requires custom sacct output (see README).'
 )
 parser.add_argument(
-    'olds',
-    type = str,
-    help = 'Glob for old slurm job JSONs'
-)
-parser.add_argument(
-    'sacct',
-    type = str,
-    help = 'Output of `sacct` command'
-)
-parser.add_argument(
-    '--token',
-    help = 'Slack bot token. If not provided, will use SLACK_BOT_TOKEN env variable',
+    '--new-job',
+    help = "Add a new directory to exawatcher's database. If this dir already exists its state will be reset.",
     type = str
 )
 parser.add_argument(
-    '--dm',
-    help = 'Slack DM ID to post to. If not provided, will use SLACK_DM env variable',
+    '--process-all',
+    help = 'Run exawatchers processor on all jobs in database',
+    action = 'store_true'
+)
+parser.add_argument(
+    '--process-job',
+    help = 'Process job at the specified directory. Can be given multiple times.',
+    nargs = 1,
+    action = 'append',
     type = str
 )
 parser.add_argument(
-    '--manual-process',
-    help = 'Manually process a job name. Will still run SLURM process',
-    type = str
+    '--db',
+    help = 'Alternate database location. Default is ~/exawatcher.db',
+    default = os.path.join(os.path.expanduser('~'), 'exawatcher.db')
 )
 
 args = parser.parse_args()

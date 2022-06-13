@@ -6,10 +6,10 @@ import os
 import argparse
 import sys
 import re
-import shutil
+from shutil import which
+from socket import gethostname
 import subprocess
 import logging
-from datetime import datetime
 from urllib.error import HTTPError
 from slack import WebClient
 from slack.errors import SlackApiError
@@ -163,11 +163,18 @@ class RelionJob(object):
         self.check_status()
         self.write_status(self.status)
 
-        self.message = f'Job {self.number} in project {self.project} has '
+        emoji = {
+            'Running': '🏃',
+            'Failed': '☠️',
+            'User Abort': '🔪'
+            'Pending': '⌚'
+        }
+
+        self.message = f'Job {self.number} in project {self.project} on {gethostname()} has '
         if self.status == 'Finished':
-            self.message += 'finished.'
+            self.message += 'finished ✔️.'
         else:
-            self.message += f'changed from {self.old_status} to {self.status}.'
+            self.message += f'changed from {self.old_status} to {self.status} {emoji[self.status]}.'
 
     def check_status(self):
         status = 'Pending'
@@ -203,7 +210,7 @@ class RelionJob(object):
     
     def make_projection(self, map_filename):
         # need relion_project (pro-JECT, not PRO-ject haha) and mrc2tif to make pngs from maps
-        if not shutil.which('relion_project') or not shutil.which('mrc2tif'):
+        if not which('relion_project') or not which('mrc2tif'):
             self.message += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
             return
 

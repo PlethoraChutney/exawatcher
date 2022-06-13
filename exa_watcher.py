@@ -238,6 +238,9 @@ class RelionJob(object):
 
 
 class JobRefine3D(RelionJob):
+    def __init__(self, path, project, number, slack_info):
+        super().__init__(path, project, number, slack_info)
+
     def finished_process(self):
         relevant_lines = []
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
@@ -252,6 +255,9 @@ class JobRefine3D(RelionJob):
         self.files.append(self.make_projection(f'{self.path}/run_class001.mrc'))
 
 class JobClass3D(RelionJob):
+    def __init__(self, path, project, number, slack_info):
+        super().__init__(path, project, number, slack_info)
+
     def finished_process(self):
         mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
         iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
@@ -305,6 +311,9 @@ class JobClass3D(RelionJob):
             self.make_projection(vol)
 
 class JobPostProcess(RelionJob):
+    def __init__(self, path, project, number, slack_info):
+        super().__init__(path, project, number, slack_info)
+
     def finished_process(self):
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
             for line in f:
@@ -316,6 +325,9 @@ class JobPostProcess(RelionJob):
         self.make_projection(os.path.join(self.path, 'postprocess.mrc'))
 
 class JobExtract(RelionJob):
+    def __init__(self, path, project, number, slack_info):
+        super().__init__(path, project, number, slack_info)
+
     def finished_process(self):
         with open(self.location, 'r') as f:
             for line in f:
@@ -325,6 +337,9 @@ class JobExtract(RelionJob):
         self.message += f'\nExtracted {match}.'
 
 class JobInitialModel(RelionJob):
+    def __init__(self, path, project, number, slack_info):
+        super().__init__(path, project, number, slack_info)
+
     def finished_process(self):
         mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
         iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
@@ -337,6 +352,9 @@ class JobInitialModel(RelionJob):
             self.make_projection(vol)
 
 class JobCtfRefine(RelionJob):
+    def __init__(self, path, project, number, slack_info):
+        super().__init__(path, project, number, slack_info)
+        
     def finished_process(self):
         self.files.append(os.path.join(self.path, 'logfile.pdf'))
 

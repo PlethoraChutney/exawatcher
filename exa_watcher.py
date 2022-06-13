@@ -156,6 +156,7 @@ class RelionJob(object):
                 self.old_status = f.readline().strip()
 
         self.check_status()
+        self.write_status(self.status)
 
         self.message = f'Job {self.number} in project {self.project} has '
         if self.status == 'Finished':
@@ -391,6 +392,8 @@ def main(args) :
     for project_name in process_targets:
         current_processor = Project(project_name, db.db.get(project_name), slack_info)
         current_processor.scan_for_jobs()
+        current_processor.process_jobs()
+
 
     db.close_db()
 

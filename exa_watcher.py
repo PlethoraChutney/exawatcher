@@ -124,9 +124,9 @@ class Project(object):
                     self.slack_info
                 )
 
-    def process_jobs(self):
+    def process_jobs(self, force = False):
         for job in self.usable_jobs.values():
-            if job.status != job.old_status:
+            if job.status != job.old_status or force:
                 if job.status == 'Finished':
                     job.finished_process()
                 
@@ -431,7 +431,7 @@ def main(args) :
     for project_name in process_targets:
         current_processor = Project(project_name, db.db.get(project_name), slack_info)
         current_processor.scan_for_jobs()
-        current_processor.process_jobs()
+        current_processor.process_jobs(force = args.force_process)
 
 
     db.close_db()
@@ -480,6 +480,11 @@ process.add_argument(
     nargs = 1,
     action = 'append',
     type = str
+)
+process.add_argument(
+    '--force-process',
+    help = 'Process the given projects even if they already have been. Note that right now this forces reprocessing of all jobs in a project. Might be easier to delete the .exawatcher/last_status.txt file.',
+    action = 'store_true'
 )
 
 verbosity = parser.add_argument_group('verbosity')

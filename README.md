@@ -1,55 +1,152 @@
-# ExaWatcher
+# ExaWatcher 💾👀
 
-Watch a SLURM queue and send slack messages when jobs start, finish, or fail.
-If you're watching RELION jobs, you'll get some more info.
+ExaWatcher is a lightweight, cron-based system for monitoring RELION jobs. It is designed to be very easy to use on a compute cluster or a single workstation, regardless of permissions. No persistent services are required, and nothing more than python libraries need to be installed.
 
-You'll need a [slack bot](https://slack.com/help/articles/115005265703-Create-a-bot-for-your-workspace) with `chat:write` and `files:write` permissions. Your user ID (for the `DM`
-variable) can be found at the bottom of your user profile in the Slack client.
+![A screenshot of a 3D Class job processed with ExaWatcher](img/3d-class.png)
 
-## Submission Scripts
-To pass information about the job to ExaWatcher, be sure you're using sbatch.
-Add
+## Requirements ☑️
+You must have python, IMOD, and RELION installed on your system.
 
-`#SBATCH --job-name=XXXqueueXXX`
+## Installation 👷
 
-to your submission script. When you're submitting a job, in the "Queue name" field,
-add a string to identify the project and job number. By default, ExaWatcher looks
-for cryoSPARC format, i.e., `P[project-name]J[job-number]`. You can change this in
-`exa_watcher.py`. You'll definitely have to change where ExaWatcher looks for your
-files from the default of my username.
+### Exawatcher
+ 1. Create a virtual environment which is accessible from all compute nodes
+    - Example: `python3 -m virtualenv exavenv`
+ 2. Source the virtual env
+    - Example: `source exavenv/bin/activate`
+ 3. Install the requirements
+    - Example: `python3 -m pip install -r requirements.txt`
 
+### Slack Authentication
+To send slack messages, you must [create a slack bot](https://slack.com/help/articles/115005265703-Create-a-bot-for-your-workspace) with the following permissions:
+ - `chat:write`
+ - `files:write`
 
+Once you've created your bot, store the key in your ExaWatcher database. For example:
+```
+/path/to/exa_watcher.py --slack-key {your Bot User OAuth Token}
+```
 
-## `sacct` format
-You must feed a text file of a **custom `sacct` output** with the following format
-(exact column widths can differ, obviously, but by default they're too short):
+By default, the ExaWatcher database is stored at `~/exawatcher.db`. If you'd like
+it somewhere else, you can pass `--db /path/to/database` to all ExaWatcher commands
+to give it a new location.
 
-` sacct --format="JobID%25,JobName%27,State%40,ExitCode" > /path/to/wherever/sacct-out.txt`
+Next, find your slack DM channel. The easiest way is: 
+ 1. Open Slack
+ 2. Open your profile
+ 3. Click the "... More" circle
+ 4. Copy Member ID
 
-ExaWatcher reads the `JobId` to determine which are the main jobs and which are
-sub-jobs and the `JobName` to determine where to look for RELION files. The `State`
-needs to be longer in case a job gets cancelled by someone.
+Add this ID to your ExaWatcher database. For example:
+```
+/path/to/exa_watcher.py --slack-dm-id {your Member ID}
+```
 
-## cron job
-I have found that running a cron job every five minutes is more than sufficient.
-Make sure that the cron job has a RELION `bin` directory and an imod `bin`
-directory in the environment. RELION and imod are required to convert 3DClass
-maps into `png` files. You'll also need to have your slack token in your
-environment...or as an argument (don't!)
+If everything worked correctly, running
+```
+/path/to/exa_watcher.py --test-slack
+```
+should result in you receiving a DM from your Slack bot reading
+> Slack client successful.
 
-### Example cron job:
-watch-queue:
+## Usage 🛠️
+
+### Project management
+ExaWatcher tracks jobs within each RELION project. You must give ExaWatcher the location
+of each project directory (i.e., the directory with `default_pipeline.star` in it --- the one you open RELION in).
+
+```
+/path/to/exa_watcher.py --new-project /path/to/relion/project
+```
+
+This adds the project to ExaWatcher with the name, in this case, "project". You can check
+currently-tracked projects with
+
+```
+/path/to/exa_watcher.py --list-projects
+```
+and remove projects with
+```
+/path/to/exa_watcher.py --remove-project {project name}
+```
+
+You must give the name, not the path. This does not delete any files,
+only stops ExaWatcher from tracking them. Having finished projects in
+ExaWatcher doesn't cost much, since searching for jobs is quite fast, but
+it's still probably worth removing them when you're done to keep things snappy.
+
+### Processing
+To process all projects, run
+```
+/path/to/exa_watcher.py --process-all
+```
+If any jobs in any tracked projects have changed state, you will be sent a DM
+with the old job state, the new job state, and (if the job is finished), some
+information about the results. Right now, the only jobs that are tracked are
+
+ - Extract
+   - You will be sent the number of particles
+ - Initial Model
+   - You will be sent projections of all maps
+ - Refine 3D
+   - You will be sent the final unmasked resolution
+   - You will be sent a map projection
+ - Class 3D
+   - You will be sent a graph of class occupancy per iteration
+   - You will be sent projections of all maps
+ - Post Process
+   - You will be sent the final resolution
+   - You will be sent a projection of the unmasked processed map
+ - CTF Refine
+   - You will be sent the logfile PDF
+
+and the current states are
+
+ - Pending (job has not started)
+ - Running (job is running, i.e., `run.out` exists)
+ - User Abort (job aborted using RELION GUI/filesystem)
+ - Failed (RELION wrote "RELION_JOB_EXIT_FAILURE" to job directory)
+ - Finished (job completed successfully)
+
+To process only a specific project, use `--process-project {project name}`. You can
+force all jobs in a project to be processed regardless of state with
+`--force-process {project name}` but it's probably better to manually
+delete `.exawatcher/last_status.txt` in the jobs you want to process.
+
+If you are adding an existing project to ExaWatcher with many finished jobs,
+you may want to run 
+```
+/path/to/exa_watcher.py --process-all --no-process
+```
+which, while confusing to read, will create the necessary files in all jobs without
+sending you tons of DMs about jobs you've already inspected.
+
+### Cron job
+To avoid requiring a persistent service (not an option on most clusters), ExaWatcher
+expects to run as a cron job. These are jobs which run at a set interval. I recommend
+creating a script which sources the necessary modules and runs ExaWatcher. For instance:
+
 ```
 #!/bin/bash
+module load relion # necessary for relion_project
+module load imod   # necessary for mrc2tif (to make PNGs haha)
+source /path/to/exawatcher_venv/bin/activate
 
-PATH=$PATH:/path/to/relion/bin
-source /path/to/imod/IMOD/IMOD-linux.sh
-sacct --format="JobID%25,JobName%27,State%40,ExitCode" > /path/to/sacct-out.txt
-cd /path/to/exawatcher
-source venv/bin/activate
-python exa_watcher.py '*.json' ./sacct-out.txt --dm CHANNEL_ID --token it-is-not-a-good-idea-to-save-tokens-in-text-files
+/path/to/exa_watcher.py --process-all
 ```
 
-cron job:
+Then, set up a cron job to run this at your desired frequency. If you're not familiar
+with cron jobs, you may find [this resource](https://crontab.guru/) useful.
 
-`*/5 * * * * /path/to/watch-queue`
+## Common Pitfalls 🐛
+If you run into some kind of uncaught exception, the database will remain locked.
+The database is locked during processing to prevent high-frequency cron jobs
+from processing the same job multiple times. To unlock it after an error, run
+```
+/path/to/exa_watcher.py --clear-lock
+```
+or delete `.dblock` in your database directory.
+
+If you run into any other bugs, or have feature requests, feel free to submit an issue.
+This script is under active development. I especially encourage PRs to support new
+job types.

@@ -437,8 +437,8 @@ def main(args) :
     for project_name in process_targets:
         current_processor = Project(project_name, db.db.get(project_name), slack_info)
         current_processor.scan_for_jobs()
-        current_processor.process_jobs(force = args.force_process)
-
+        if not args.no_process:
+            current_processor.process_jobs(force = args.force_process)
 
     db.close_db()
 
@@ -494,6 +494,11 @@ process.add_argument(
 process.add_argument(
     '--force-process',
     help = 'Process the given projects even if they already have been. Note that right now this forces reprocessing of all jobs in a project. Might be easier to delete the .exawatcher/last_status.txt file.',
+    action = 'store_true'
+)
+process.add_argument(
+    '--no-process',
+    help = 'Ignore other process arguments, do not process anything. Useful when adding a large project for the first time.',
     action = 'store_true'
 )
 

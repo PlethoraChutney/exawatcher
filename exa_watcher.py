@@ -125,7 +125,7 @@ class Project(object):
 
     def process_jobs(self):
         for job in self.usable_jobs.values():
-            if job.has_udpated:
+            if job.status != job.old_status:
                 if job.status == 'Finished':
                     job.finished_process()
                 
@@ -178,10 +178,6 @@ class RelionJob(object):
             status = 'Finished'
 
         self.status = status
-
-    @property
-    def has_updated(self):
-        return self.status != self.old_status
 
     def write_status(self, new_status):
         with open(self.status_path, 'w') as f:
@@ -354,7 +350,7 @@ class JobInitialModel(RelionJob):
 class JobCtfRefine(RelionJob):
     def __init__(self, path, project, number, slack_info):
         super().__init__(path, project, number, slack_info)
-        
+
     def finished_process(self):
         self.files.append(os.path.join(self.path, 'logfile.pdf'))
 

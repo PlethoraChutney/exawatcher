@@ -109,8 +109,8 @@ and the current states are
  - Finished (job completed successfully)
 
 To process only a specific project, use `--process-project {project name}`. You can
-force all jobs in a project to be processed regardless of state with
-`--force-process {project name}` but it's probably better to manually
+force all jobs to send DMs regardless of state with
+`--force-process` but it's probably better to manually
 delete `.exawatcher/last_status.txt` in the jobs you want to process.
 
 If you are adding an existing project to ExaWatcher with many finished jobs,

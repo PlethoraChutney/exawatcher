@@ -140,7 +140,7 @@ class RelionJob(object):
         # exapath is where we'll store all the crap for exawatcher
         # like current job status and any files/images we make
         self.exapath = os.path.join(path, '.exawatcher')
-        self.status_path = os.path.join(self.exapath, 'last_status')
+        self.status_path = os.path.join(self.exapath, 'last_status.txt')
         self.slack_client = slack_info['client']
         self.slack_dm = slack_info['dm']
         self.files = []

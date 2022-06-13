@@ -13,6 +13,7 @@ import logging
 from urllib.error import HTTPError
 from slack import WebClient
 from slack.errors import SlackApiError
+from random import choice
 
 
 # remove annoying pandas error message
@@ -166,11 +167,22 @@ class RelionJob(object):
         emoji = {
             'Running': '🏃',
             'Failed': '☠️',
-            'User Abort': '🔪'
+            'User Abort': '🔪',
             'Pending': '⌚'
         }
 
-        self.message = f'Job {self.number} in project {self.project} on {gethostname()} has '
+        greetings = [
+            'How are you?',
+            'Hope you\'re well',
+            "How's it going?",
+            "How's research?",
+            "When are you going to graduate? Haha, anyway.",
+            "Lookin' good!",
+            "Are you drinking water?",
+            "Have a snack after this!"
+        ]
+
+        self.message = f'Hi! {choice(greetings)}\nJob {self.number} in project {self.project} on {gethostname()} has '
         if self.status == 'Finished':
             self.message += 'finished ✔️.'
         else:
@@ -253,7 +265,7 @@ class JobRefine3D(RelionJob):
         relevant_lines = []
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
             for line in f:
-                final_res = re.match('Auto-refine: + Final resolution (without masking) is: ([0-9.]+)', line)
+                final_res = re.match('Auto-refine: \+ Final resolution \(without masking\) is: ([0-9.]+)', line)
 
                 if final_res:
                     final_res = final_res.group(1)
@@ -310,6 +322,7 @@ class JobClass3D(RelionJob):
 
         plt.xlabel('Iteration number')
         plt.ylabel('Percent particle membership')
+        plt.legend(loc = 'upper left')
 
         outpath = os.path.join(self.exapath, 'classes_over_time.png')
         fig.savefig(outpath)

@@ -175,11 +175,11 @@ class RelionJob(object):
         # their heirarchy somewhat manually here.
         if os.path.exists(os.path.join(self.path, 'run.out')):
             status = 'Running'
-        if os.path.exists(os.path.join(self.path, 'RELION_EXIT_FAILURE')):
+        if os.path.exists(os.path.join(self.path, 'RELION_JOB_EXIT_FAILURE')):
             status = 'Failed'
-        if os.path.exists(os.path.join(self.path, 'RELION_EXIT_ABORTED')):
+        if os.path.exists(os.path.join(self.path, 'RELION_JOB_EXIT_ABORTED')):
             status = 'User Abort'
-        if os.path.exists(os.path.join(self.path, 'RELION_EXIT_SUCCESS')):
+        if os.path.exists(os.path.join(self.path, 'RELION_JOB_EXIT_SUCCESS')):
             status = 'Finished'
 
         self.status = status
@@ -253,7 +253,7 @@ class JobRefine3D(RelionJob):
                     self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/run_class001.mrc`'
                     break
 
-        self.files.append(self.make_projection(f'{self.path}/run_class001.mrc'))
+        self.make_projection(f'{self.path}/run_class001.mrc')
 
 class JobClass3D(RelionJob):
     def __init__(self, path, project, number, slack_info):

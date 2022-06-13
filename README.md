@@ -128,8 +128,6 @@ creating a script which sources the necessary modules and runs ExaWatcher. For i
 
 ```
 #!/bin/bash
-module load relion # necessary for relion_project
-module load imod   # necessary for mrc2tif (to make PNGs haha)
 source /path/to/exawatcher_venv/bin/activate
 
 /path/to/exa_watcher.py --process-all

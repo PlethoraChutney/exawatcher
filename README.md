@@ -10,7 +10,7 @@ You must have python, IMOD, and RELION installed on your system.
 ## Installation 👷
 
 ### Exawatcher
- 1. Create a virtual environment which is accessible from all compute nodes
+ 1. Create a virtual environment
     - Example: `python3 -m virtualenv exavenv`
  2. Source the virtual env
     - Example: `source exavenv/bin/activate`

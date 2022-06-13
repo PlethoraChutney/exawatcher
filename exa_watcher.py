@@ -92,9 +92,10 @@ class Database(object):
 
 
 class Project(object):
-    def __init__(self, project_name, project_dir):
+    def __init__(self, project_name, project_dir, slack_info):
         self.project_name = project_name
         self.project_dir = project_dir
+        self.slack_info = slack_info
 
     def __repr__(self):
         return f'Project {self.project_name}'
@@ -105,23 +106,46 @@ class Project(object):
         for job in all_jobs:
             job_num = re.search('job([0-9]{3})', job).group(1)
             if 'Extract' in job:
-                usable_jobs[job_num] = {'type': 'Extract', 'path': job}
+                usable_jobs[job_num] = RelionJob(job, self.slack_info)
             elif 'InitialModel' in job:
-                usable_jobs[job_num] = {'type': 'InitialModel', 'path': job}
+                usable_jobs[job_num] = RelionJob(job, self.slack_info)
             elif 'Refine3D' in job:
-                usable_jobs[job_num] = {'type': 'Refine3D', 'path': job}
+                usable_jobs[job_num] = RelionJob(job, self.slack_info)
 
-        print(usable_jobs)
+        for job in usable_jobs.values():
+            print(job.old_status)
 
 
 
-class SlurmJob(object):
+class RelionJob(object):
     def __init__(self, path, slack_info):
         self.path = path
+        self.exapath = os.path.join(path, '.exawatcher')
+        self.status_path = os.path.join(self.exapath, 'last_status')
         self.slack_client = slack_info['client']
         self.slack_dm = slack_info['dm']
         self.message = ''
         self.files = []
+
+        if not os.path.exists(self.exapath):
+            os.makedirs(self.exapath)
+            with open(self.status_path, 'w') as f:
+                f.write('Pending')
+            self.status = 'Pending'
+            self.old_status = 'Pending'
+
+        else:
+            with open(self.status_path, 'r') as f:
+                self.old_status = f.readline().strip()
+
+            self.status = self.old_status
+
+
+    def update_status(self, new_status):
+        with open(self.status_path, 'w') as f:
+            f.write(new_status)
+
+        
 
     def announce(self):
         result = self.slack_client.chat_postMessage(
@@ -434,8 +458,13 @@ def main(args) :
     else:
         process_targets = args.process_project
 
+    slack_info = {
+        'client': create_slack_client(db.slack_key),
+        'dm': db.slack_dm
+    }
+
     for project_name in process_targets:
-        current_processor = Project(project_name, db.db.get(project_name))
+        current_processor = Project(project_name, db.db.get(project_name), slack_info)
         current_processor.scan_for_jobs()
 
     db.close_db()

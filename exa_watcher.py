@@ -440,6 +440,30 @@ process.add_argument(
     type = str
 )
 
+verbosity = parser.add_argument_group('verbosity')
+vxg = verbosity.add_mutually_exclusive_group()
+vxg.add_argument(
+    '-q', '--quiet',
+    help = 'Print Errors only',
+    action = 'store_const',
+    dest = 'verbosity',
+    const = 'q'
+)
+vxg.add_argument(
+    '-v', '--verbose',
+    help = 'Print Info, Warnings, and Errors. Default state.',
+    action = 'store_const',
+    dest = 'verbosity',
+    const = 'v'
+)
+vxg.add_argument(
+    '--debug',
+    help = 'Print debug output.',
+    action = 'store_const',
+    dest = 'verbosity',
+    const = 'd'
+)
+
 debug = parser.add_argument_group('debug')
 debug.add_argument(
     '--test-slack',
@@ -447,9 +471,25 @@ debug.add_argument(
     action = 'store_true'
 )
 
-args = parser.parse_args()
-
 if __name__ == '__main__':
+    args = parser.parse_args()
+
+    levels = {
+        'q': logging.ERROR, 
+        'v': logging.INFO,
+        'd': logging.DEBUG
+    }
+    try:
+        level = levels[args.verbosity]
+    except KeyError:
+        level = logging.INFO
+
+    logging.basicConfig(
+        level = level,
+        format = '{levelname}: {message} ({filename})',
+        style = '{'
+    )
+
     main(args)
 
     

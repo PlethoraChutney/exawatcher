@@ -235,12 +235,15 @@ class RelionJob(object):
         ))['model_class_1']
 
         fig = plt.figure()
-        plt.plot(fsc_data.rlnResolution, fsc_data.rlnGoldStandardFsc, '-')
+        plt.axhline(y = 0.143, color = '#AFAFAF', linestyle = '-', zorder = 1)
+        plt.plot(fsc_data.rlnResolution, fsc_data.rlnGoldStandardFsc, '-', zorder = 200)
         plt.xlabel('Resolution (A)')
         plt.ylabel('GSFSC')
         positions = fsc_data.rlnResolution[3::10]
         labels = [round(float(x), 1) for x in fsc_data.rlnAngstromResolution[3::10]]
         plt.xticks(positions, labels)
+        plt.grid(color = '#EEEEEE')
+        plt.axhline(y = 0.143, color = '#AFAFAF', linestyle = '-')
 
         outpath = os.path.join(self.exapath, 'fsc.png')
         fig.savefig(outpath)

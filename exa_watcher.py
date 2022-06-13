@@ -147,13 +147,18 @@ class RelionJob(object):
 
         if not os.path.exists(self.exapath):
             os.makedirs(self.exapath)
-            with open(self.status_path, 'w') as f:
+            with open(self.status_path, 'a') as f:
                 f.write('Pending')
             self.old_status = 'Pending'
 
         else:
-            with open(self.status_path, 'r') as f:
-                self.old_status = f.readline().strip()
+            try:
+                with open(self.status_path, 'r') as f:
+                    self.old_status = f.readline().strip()
+            except FileNotFoundError:
+                with open(self.status_path, 'a') as f:
+                    f.write('Pending')
+                self.old_status = 'Pending'
 
         self.check_status()
         self.write_status(self.status)

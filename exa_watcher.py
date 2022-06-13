@@ -14,16 +14,9 @@ from urllib.error import HTTPError
 from slack import WebClient
 from slack.errors import SlackApiError
 
-####### Hard-coded values #######
-#
-# This will get you anything after P and three numbers after J in a string matching P[whatever]J###
-job_regex = 'P(.*)J([0-9]{3})'
-#
-# Change this for each user. Should probably be an argument.
-# This is where you put your project directories, i.e., what comes after P in the above
-data_location = '/home/exacloud/gscratch/BaconguisLab/posert'
 
-projection_error_message = "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+# remove annoying pandas error message
+pd.options.mode.chained_assignment = None
 
 class Database(object):
     def __init__(self, db_path):
@@ -97,22 +90,30 @@ class Project(object):
         self.project_dir = project_dir
         self.slack_info = slack_info
 
+        self.available_job_types = {
+
+        }
+
     def __repr__(self):
         return f'Project {self.project_name}'
 
     def scan_for_jobs(self):
-        usable_jobs = {}
+        self.usable_jobs = {}
         all_jobs = glob.glob(os.path.join(self.project_dir, '*', 'job*'))
         for job in all_jobs:
             job_num = re.search('job([0-9]{3})', job).group(1)
-            if 'Extract' in job:
-                usable_jobs[job_num] = RelionJob(job, self.slack_info)
-            elif 'InitialModel' in job:
-                usable_jobs[job_num] = RelionJob(job, self.slack_info)
-            elif 'Refine3D' in job:
-                usable_jobs[job_num] = RelionJob(job, self.slack_info)
 
-        for job in usable_jobs.values():
+            job_type = [x for x in self.available_job_types.keys() if x in job]
+            try:
+                job_type = job_type[0]
+            except IndexError:
+                # not a job type we can process yet
+                job_type = False
+
+            if job_type:
+                self.usable_jobs[job_num] = self.available_job_types[job_type](job, self.slack_info)
+
+        for job in self.usable_jobs.values():
             print(job.old_status)
 
 
@@ -140,12 +141,13 @@ class RelionJob(object):
 
             self.status = self.old_status
 
+    @property
+    def has_updated(self):
+        return self.status != self.old_status
 
     def update_status(self, new_status):
         with open(self.status_path, 'w') as f:
             f.write(new_status)
-
-        
 
     def announce(self):
         result = self.slack_client.chat_postMessage(
@@ -160,182 +162,145 @@ class RelionJob(object):
                 filetype = 'png'
             )
     
+    def make_projection(self, map_filename):
+        # need relion_project (pro-JECT, not PRO-ject haha) and mrc2tif to make pngs from maps
+        if not shutil.which('relion_project') or not shutil.which('mrc2tif'):
+            self.message += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
+            return
+
+        map_base = map_filename[:-4]
+
+        # project map to single image (only mrc out available)
+        subprocess.run(
+            [
+                'relion_project',
+                '--i',
+                os.path.join(self.path, map_filename),
+                '--o',
+                os.path.join(self.exapath, map_base+'proj.mrc')
+            ],
+            stdout = subprocess.DEVNULL,
+            stderr = subprocess.DEVNULL
+        )
+        # convert mrc to png
+        subprocess.run(
+            [
+                'mrc2tif',
+                '-p',
+                os.path.join(self.exapath, map_base+'proj.mrc'),
+                os.path.join(self.exapath, map_base+'.png')
+            ],
+            stdout=subprocess.DEVNULL
+        )
+
+        self.files.append(os.path.join(self.exapath, map_base+'.png'))
+
+    def finished_process(self):
+        pass
 
 
+class JobRefine3D(RelionJob):
+    def finished_process(self):
+        relevant_lines = []
+        with open(os.path.join(self.path, 'run.out'), 'r') as f:
+            for line in f:
+                final_res = re.match('Auto-refine: + Final resolution (without masking) is: ([0-9.]+)', line)
+
+                if final_res:
+                    final_res = final_res.group(1)
+                    self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/run_class001.mrc`'
+                    break
+
+        self.files.append(self.make_projection(f'{self.path}/run_class001.mrc'))
+
+class JobClass3D(RelionJob):
+    def finished_process(self):
+        mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
+        iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
+        iterations = list(set(iterations))
+        iterations.sort()
+        max_it = iterations[-1]
+        maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
+
+        import starfile
+        import matplotlib.pyplot as plt
+        classes_over_time = None
+
+        for iteration in iterations:
+            star_files = starfile.read(f'{self.path}/run_it{iteration}_model.star')
+            cm = star_files['model_classes']
+            cm = cm[['rlnReferenceImage', 'rlnClassDistribution']]
+
+            # get the class number and fraction of particles for this iteration
+            cm['rlnReferenceImage'] = cm.rlnReferenceImage.apply(lambda x: re.search('class[0-9]{3}', x).group(0))
+            cm.rename(columns = {'rlnReferenceImage': 'Class','rlnClassDistribution': iteration}, inplace = True)
+            cm = cm.set_index('Class')
+
+            if classes_over_time is None:
+                classes_over_time = cm
+            else:
+                classes_over_time = classes_over_time.join(cm)
+
+        self.message += f'\nMap location: `{self.path}/run_it025_class*.mrc`'
+
+        class_memb_table = classes_over_time[iterations[-1]]
+        self.message += f'\nClass Membership (fraction of particles)\n```{str(class_memb_table)}```'
+
+        # sort columns then transpose so that each column is a class
+        classes_over_time = classes_over_time.reindex(sorted(classes_over_time.columns), axis = 1)
+        classes_over_time = classes_over_time.transpose()
+        iteration_nums = [int(x) for x in list(classes_over_time.index)]
 
 
-####### Read slurm and RELION info #######
+        fig = plt.figure()
+        for rln_class in classes_over_time.columns:
+            plt.plot(iteration_nums, classes_over_time[rln_class], '-o', label = f'Class {rln_class}')
 
-def read_sa(file):
-    # Note that this is hard-coded. You need to follow the sacct command rules
-    # from the README
-    table = pd.read_table(
-        file,
-        names = ['id', 'name', 'state', 'code'],
-        dtype = {'id': str, 'name': str, 'state': str, 'code': str},
-        skiprows = 2,
-        sep = '\s{2,}',
-        engine = 'python'
-    )
+        plt.xlabel('Iteration number')
+        plt.ylabel('Percent particle membership')
 
-    # sub-jobs get launched as part of RELION's processing.
-    # 
-    # filtering only to ids with length 8 gets us only the
-    # primary, named job. If your queue is at a different
-    # order of magnitude of jobs, you may need to modify this
-    table = table.loc[table['id'].str.len() == 8]
+        outpath = os.path.join(self.exapath, 'classes_over_time.png')
+        fig.savefig(outpath)
+        self.files.append(outpath)
 
-    # convert table to list of tuples
-    return list(table.itertuples(index = False, name = None))
+        for vol in maps_to_project:
+            self.make_projection(vol)
 
-def make_projection(map_location):
-    # need relion_project and mrc2tif to make pngs from maps
-    if not shutil.which('relion_project') or not shutil.which('mrc2tif'):
-        raise EnvironmentError
+class JobPostProcess(RelionJob):
+    def finished_process(self):
+        with open(os.path.join(self.path, 'run.out'), 'r') as f:
+            for line in f:
+                if 'FINAL RESOLUTION' in line:
+                    final_res = re.search('[0-9.]+').group(0)
 
-    loc_base = map_location[:-4]
-    if 'proj' in map_location:
-        return
+        self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/postprocess.mrc`'
 
-    # project map to single image (only mrc out available)
-    subprocess.run(['relion_project', '--i', map_location, '--o', loc_base+'proj.mrc'],
-      stdout=subprocess.DEVNULL,
-      stderr=subprocess.DEVNULL
-    )
-    # convert mrc to png
-    subprocess.run(['mrc2tif', '-p', loc_base+'proj.mrc', loc_base+'.png'],
-      stdout=subprocess.DEVNULL
-    )
+        self.make_projection(os.path.join(self.path, 'postprocess.mrc'))
 
-    return loc_base+'.png'
+class JobExtract(RelionJob):
+    def finished_process(self):
+        with open(self.location, 'r') as f:
+            for line in f:
+                if "Written out STAR file with" in line:
+                    match = re.search('[0-9]+ particles', line).group(0)
+                    
+        self.message += f'\nExtracted {match}.'
 
-class RunInfo:
-    def __init__(self, location) -> None:
-        try:
-            self.location = glob.glob(location)[0]
-            self.dir = os.path.split(self.location)[0]
-            self.job_type = self.location.split('/')[-3]
-            self.addendum = f'\nJob type: {self.job_type}'
-            self.get_info()
-        # If there's no run.out, the location glob line raises an IndexError
-        except IndexError:
-            self.addendum = f"\nI couldn't find a `run.out` file for this job. Did you set the name correctly?"
+class JobInitialModel(RelionJob):
+    def finished_process(self):
+        mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
+        iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
+        iterations = list(set(iterations))
+        iterations.sort()
+        max_it = iterations[-1]
+        maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
+        for vol in maps_to_project:
+            self.message += f"\nMap location: `{self.path}/run_it300_class*.mrc`"
+            self.make_projection(vol)
 
-    def get_info(self):
-        self.files = []
-
-        if self.job_type == 'PostProcess':
-            self.table = pd.read_table(
-                self.location,
-                names = ['stat', 'value'],
-                dtype = {'stat': str, 'value': str},
-                sep = '\s{2,}',
-                engine = 'python'
-            )
-            # convert last four lines of table to numpy array, take second value of each entry
-            results = self.table[-4:].to_numpy()[:,1]
-            resolution = results[3]
-            map_loc = os.path.split(results[0])[1]
-            self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
-
-            try:
-                self.files.append(make_projection(f'{self.dir}/{map_loc}'))
-            except EnvironmentError:
-                self.addendum += projection_error_message
-        
-        elif self.job_type == 'Refine3D':
-            relevant_lines = []
-            with open(self.location, 'r') as f:
-                for line in f:
-                    if 'Auto-refine: + Final' in line:
-                        relevant_lines.append(line.rsplit("\n")[0])
-            map_loc = relevant_lines[0].split(' ')[-1].split('/')[-1]
-            resolution = relevant_lines[-1].split(' ')[-1]
-            self.addendum += f'\nFinal resolution: *{resolution}*\nMap at: `{self.dir}/{map_loc}`'
-            try:
-                self.files.append(make_projection(f'{self.dir}/{map_loc}'))
-            except EnvironmentError:
-                self.addendum += projection_error_message
-        
-        elif self.job_type == 'Extract':
-            with open(self.location, 'r') as f:
-                for line in f:
-                    if "Written out STAR file with" in line:
-                        match = re.search('([0-9]{1,}) particles', line)
-                        
-            self.addendum += f'\nExtracted {match.group(1)} particles.'
-        
-        elif self.job_type == 'Class3D':
-            mrcs = glob.glob(f'{self.dir}/run_it*_class*.mrc')
-            iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
-            iterations.sort()
-            max_it = iterations[-1]
-            maps_to_project = glob.glob(f'{self.dir}/run_it{max_it}_class*.mrc')
-
-            import starfile
-            import matplotlib.pyplot as plt
-            classes_over_time = None
-
-            for iteration in list(set(iterations)):
-                pd.options.mode.chained_assignment = None
-                star_files = starfile.read(f'{self.dir}/run_it{iteration}_model.star')
-                cm = star_files['model_classes']
-                cm = cm[['rlnReferenceImage', 'rlnClassDistribution']]
-                cm['rlnReferenceImage'] = cm.rlnReferenceImage.apply(lambda x: re.search('class[0-9]{3}', x).group(0))
-                cm.rename(columns = {'rlnReferenceImage': 'Class','rlnClassDistribution': iteration}, inplace = True)
-                cm = cm.set_index('Class')
-
-                if classes_over_time is None:
-                    classes_over_time = cm
-                else:
-                    classes_over_time = classes_over_time.join(cm)
-
-            self.addendum += f'\nMap location: `{self.dir}/run_it025_class*.mrc`'
-
-            class_memb_table = classes_over_time[iterations[-1]]
-            self.addendum += f'\nClass Membership (fraction of particles)\n```{str(class_memb_table)}```'
-
-            # sort columns then transpose so that each column is a class
-            classes_over_time = classes_over_time.reindex(sorted(classes_over_time.columns), axis = 1)
-            classes_over_time = classes_over_time.transpose()
-            iteration_nums = [int(x) for x in list(classes_over_time.index)]
-
-
-            fig = plt.figure()
-            for rln_class in classes_over_time.columns:
-                plt.plot(iteration_nums, classes_over_time[rln_class], '-o')
-
-            plt.xlabel('Iteration number')
-            plt.ylabel('Percent particle membership')
-
-            fig.savefig('classes_over_time.png')
-            self.files.append('classes_over_time.png')
-
-            for vol in maps_to_project:
-                if 'proj' not in vol:
-                    try:
-                        self.files.append(make_projection(vol))
-                    except EnvironmentError:
-                        self.addendum += projection_error_message
-                        break
-        
-        elif self.job_type == 'InitialModel':
-            maps_to_project = glob.glob(f'{self.dir}/run_it300_class*.mrc')
-            for vol in maps_to_project:
-                if 'proj' not in vol:
-                    self.addendum += f"\nMap location: `{self.dir}/run_it300_class*.mrc`"
-                    try:
-                        self.files.append(make_projection(vol))
-                    except EnvironmentError:
-                        self.addendum += projection_error_message
-                        break
-        
-        elif self.job_type == 'CtfRefine':
-            self.files.append(f'{self.dir}/logfile.pdf')
-
-    
-    def __repr__(self) -> str:
-        return f'run.out file at {self.location}'
+class JobCtfRefine(RelionJob):
+    def finished_process(self):
+        self.files.append(os.path.join(self.path, 'logfile.pdf'))
 
 class SlurmJob:
     def __init__(self, sacct_row) -> None:
@@ -361,7 +326,7 @@ class SlurmJob:
         match = re.search(job_regex, self.name)
         if match and self.state == 'COMPLETED':
             self.info = RunInfo(f'{data_location}/{match.group(1)}/*/job{match.group(2)}/run.out')
-            self.message += self.info.addendum
+            self.message += self.info.message
 
         result = slack_client.chat_postMessage(
             channel = slack_dm,

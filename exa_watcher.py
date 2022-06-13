@@ -146,7 +146,7 @@ class RelionJob(object):
         self.number = number
         # exapath is where we'll store all the crap for exawatcher
         # like current job status and any files/images we make
-        self.exapath = os.path.join(path, '.exawatcher')
+        self.exapath = os.path.join(path, f'.exawatcher{os.path.sep}')
         self.status_path = os.path.join(self.exapath, 'last_status.txt')
         self.slack_client = slack_info['client']
         self.slack_dm = slack_info['dm']
@@ -239,7 +239,7 @@ class RelionJob(object):
         concat = skimage.img_as_ubyte(concat)
         outfile = os.path.join(
             self.exapath,
-            map_filename[:-4] + '_projected.png'
+           os.path.split( map_filename)[1][:-4] + '_projected.png'
         )
         skimage.io.imsave(outfile, concat)
 

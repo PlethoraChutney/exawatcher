@@ -14,7 +14,9 @@ from urllib.error import HTTPError
 from slack import WebClient
 from slack.errors import SlackApiError
 from random import choice
-
+import numpy as np
+import skimage
+import mrcfile
 
 # remove annoying pandas error message
 pd.options.mode.chained_assignment = None
@@ -138,10 +140,6 @@ class Project(object):
 
 
 class RelionJob(object):
-    import numpy as np
-    import skimage
-    import mrcfile
-
     def __init__(self, path, project, number, slack_info):
         self.path = path
         self.project = project
@@ -243,7 +241,7 @@ class RelionJob(object):
             self.exapath,
             map_filename[:-4] + '_projected.png'
         )
-        skimage.io.imsave(outfile)
+        skimage.io.imsave(outfile, concat)
 
         self.files.append(outfile)
 

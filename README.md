@@ -90,6 +90,7 @@ information about the results. Right now, the only jobs that are tracked are
    - You will be sent projections of all maps
  - Refine 3D
    - You will be sent the final unmasked resolution
+   - You will be sent an FSC curve
    - You will be sent a map projection
  - Class 3D
    - You will be sent a graph of class occupancy per iteration

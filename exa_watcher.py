@@ -17,6 +17,8 @@ from random import choice
 import numpy as np
 import skimage
 import mrcfile
+import starfile
+import matplotlib.pyplot as plt
 
 # remove annoying pandas error message
 pd.options.mode.chained_assignment = None
@@ -225,6 +227,24 @@ class RelionJob(object):
                 thread_ts = result['ts'],
                 filetype = 'png'
             )
+
+    def make_fsc_curve(self):
+        fsc_data = starfile.read(os.path.join(
+            self.path,
+            'run_model.star'
+        ))['model_class_1']
+
+        fig = plt.figure()
+        plt.plot(fsc_data.rlnResolution, fsc_data.rlnGoldStandardFsc, '-')
+        plt.xlabel('Resolution (A)')
+        plt.ylabel('GSFSC')
+        positions = fsc_data.rlnResolution[3::10]
+        labels = [round(float(x), 1) for x in fsc_data.rlnAngstromResolution[3::10]]
+        plt.xticks(positions, labels)
+
+        outpath = os.path.join(self.exapath, 'fsc.png')
+        fig.savefig(outpath)
+        self.files.append(outpath)
     
     def make_projection(self, map_filename):
         with mrcfile.open(map_filename) as mrc:
@@ -263,6 +283,7 @@ class JobRefine3D(RelionJob):
                     break
 
         self.make_projection(f'{self.path}/run_class001.mrc')
+        self.make_fsc_curve()
 
 class JobClass3D(RelionJob):
     def __init__(self, path, project, number, slack_info):
@@ -276,8 +297,6 @@ class JobClass3D(RelionJob):
         max_it = iterations[-1]
         maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
 
-        import starfile
-        import matplotlib.pyplot as plt
         classes_over_time = None
 
         for iteration in iterations:

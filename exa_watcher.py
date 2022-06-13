@@ -77,6 +77,9 @@ class Database(object):
     def new_project(self, project_dir):
         project_dir = os.path.expanduser(project_dir)
         project_dir = os.path.abspath(os.path.normpath(project_dir))
+        if not os.path.exists(project_dir):
+            logging.error('Give a path to a RELION project.')
+            sys.exit(1)
         project_name = os.path.split(project_dir)[1]
         self.db[project_name] = project_dir
         self.commit_change()
@@ -86,6 +89,31 @@ class Database(object):
             del self.db[project_name]
         except KeyError:
             logging.error(f'Could not find {project_name} in database.')
+
+
+class Project(object):
+    def __init__(self, project_name, project_dir):
+        self.project_name = project_name
+        self.project_dir = project_dir
+
+    def __repr__(self):
+        return f'Project {self.project_name}'
+
+    def scan_for_jobs(self):
+        usable_jobs = {}
+        all_jobs = glob.glob(os.path.join(self.project_dir, '*', 'job*'))
+        for job in all_jobs:
+            job_num = re.search('job([0-9]{3})', job).group(1)
+            if 'Extract' in job:
+                usable_jobs[job_num] = {'type': 'Extract', 'path': job}
+            elif 'InitialModel' in job:
+                usable_jobs[job_num] = {'type': 'InitialModel', 'path': job}
+            elif 'Refine3D' in job:
+                usable_jobs[job_num] = {'type': 'Refine3D', 'path': job}
+
+        print(usable_jobs)
+
+
 
 class SlurmJob(object):
     def __init__(self, path, slack_info):
@@ -361,44 +389,17 @@ def manual_process(job_name, client, dm):
     job = SlurmJob(['Manual Process', job_name, 'COMPLETED', '0:0'])
     job.announce(client, dm, 'MANUAL')
 
-def make_slack_client(args):
-    error_status = False
+def create_slack_client(slack_key) -> WebClient:
+    slack_web_client = WebClient(token=slack_key)
 
-    if args.dm:
-        slack_dm = args.dm
-    else:
-        try:
-            slack_dm = os.environ['SLACK_DM']
-        except KeyError:
-            print('Please put your slack DM ID in env variable SLACK_MICROSCOPY_CHANNEL')
-            error_status = True
-
-    if args.token:
-        slack_bot_token = args.token
-    else:
-        try:
-            slack_bot_token = os.environ['SLACK_BOT_TOKEN']
-        except KeyError:
-            print('Please put your slack bot token in env variable SLACK_BOT_TOKEN')
-            error_status = True
-            slack_bot_token = False
-
-    # if the user provided a bot token we can test it even without a channel
-    if error_status and not slack_bot_token:
-        sys.exit(1)
-    
-    slack_web_client = WebClient(token=slack_bot_token)
     try:
         slack_web_client.auth_test()
     except SlackApiError:
-        print('Slack authentication failed. Please check your bot token.')
-        error_status = True
+        logging.error('Slack client creation failed. Check your token')
+        sys.exit(2)
 
-    # we need to check this again in case setting the channel failed
-    if error_status:
-        sys.exit(1)
-    
-    return (slack_web_client, slack_dm)
+    return slack_web_client
+
 
 def main(args) :
     # database work can be done even while a lock file exists.
@@ -417,7 +418,11 @@ def main(args) :
     if args.list_projects:
         print('Current projects:', *db.current_projects, sep = '\n  ')
 
-    if not (args.process_all or args.process_job):
+    if args.test_slack:
+        slack_client = create_slack_client(db.slack_key)
+        slack_client.chat_postMessage(channel = db.slack_dm, text = 'Slack client successful.')
+
+    if not (args.process_all or args.process_project):
         sys.exit(0)
 
     # we should only process if another instance of exa_watcher is
@@ -425,12 +430,13 @@ def main(args) :
     db.check_lock()
 
     if args.process_all:
-        print('Processing all')
-        jobs_to_process = list(db.db.keys())
+        process_targets = db.current_projects
     else:
-        jobs_to_process = args.process_job
+        process_targets = args.process_project
 
-    print(jobs_to_process)
+    for project_name in process_targets:
+        current_processor = Project(project_name, db.db.get(project_name))
+        current_processor.scan_for_jobs()
 
     db.close_db()
 
@@ -478,6 +484,13 @@ process.add_argument(
     nargs = 1,
     action = 'append',
     type = str
+)
+
+debug = parser.add_argument_group('debug')
+debug.add_argument(
+    '--test-slack',
+    help = 'Send a test slack message using DB info.',
+    action = 'store_true'
 )
 
 args = parser.parse_args()

@@ -5,7 +5,7 @@ ExaWatcher is a lightweight, cron-based system for monitoring RELION jobs. It is
 ![A screenshot of a 3D Class job processed with ExaWatcher](img/3d-class.png)
 
 ## Requirements ☑️
-You must have python, IMOD, and RELION installed on your system.
+You have to have python, and the ability to install python libraries.
 
 ## Installation 👷
 

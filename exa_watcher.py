@@ -138,6 +138,10 @@ class Project(object):
 
 
 class RelionJob(object):
+    import numpy as np
+    import skimage
+    import mrcfile
+
     def __init__(self, path, project, number, slack_info):
         self.path = path
         self.project = project
@@ -225,37 +229,23 @@ class RelionJob(object):
             )
     
     def make_projection(self, map_filename):
-        # need relion_project (pro-JECT, not PRO-ject haha) and mrc2tif to make pngs from maps
-        if not which('relion_project') or not which('mrc2tif'):
-            self.message += "\nI couldn't make a projection image. Make sure `relion_project` and `mrc2tif` are in your environment."
-            return
+        with mrcfile.open(map_filename) as mrc:
+            map = mrc.data
 
-        map_base = map_filename[:-4]
+        x_dim = np.sum(map, axis = 0)
+        y_dim = np.sum(map, axis = 1)
+        z_dim = np.sum(map, axis = 2)
 
-        # project map to single image (only mrc out available)
-        subprocess.run(
-            [
-                'relion_project',
-                '--i',
-                os.path.join(self.path, map_filename),
-                '--o',
-                os.path.join(self.exapath, map_base+'proj.mrc')
-            ],
-            stdout = subprocess.DEVNULL,
-            stderr = subprocess.DEVNULL
+        concat = np.concatenate((x_dim, y_dim, z_dim), axis = 1)
+        concat = concat + np.abs(np.min(concat))
+        concat = skimage.img_as_ubyte(concat)
+        outfile = os.path.join(
+            self.exapath,
+            map_filename[:-4] + '_projected.png'
         )
-        # convert mrc to png
-        subprocess.run(
-            [
-                'mrc2tif',
-                '-p',
-                os.path.join(self.exapath, map_base+'proj.mrc'),
-                os.path.join(self.exapath, map_base+'.png')
-            ],
-            stdout=subprocess.DEVNULL
-        )
+        skimage.io.imsave(outfile)
 
-        self.files.append(os.path.join(self.exapath, map_base+'.png'))
+        self.files.append(outfile)
 
     def finished_process(self):
         pass

@@ -37,6 +37,28 @@ class Database(object):
         except FileNotFoundError:
             self.db = {}
 
+    @property
+    def slack_key(self):
+        return self.db.get('slack_key')
+    
+    @slack_key.setter
+    def slack_key(self, new_key):
+        self.db['slack_key'] = new_key
+        self.commit_change()
+
+    @property
+    def slack_dm(self):
+        return self.db.get('slack_dm')
+    
+    @slack_dm.setter
+    def slack_dm(self, new_dm_id):
+        self.db['slack_dm'] = new_dm_id
+        self.commit_change()
+
+    @property
+    def current_projects(self):
+        return [x for x in self.db.keys() if x not in ['slack_key', 'slack_dm']]
+
     def check_lock(self):
         if os.path.exists(self.lock_file):
             logging.info('Lock file exists. Exiting.')
@@ -52,12 +74,18 @@ class Database(object):
         self.commit_change()
         os.remove(self.lock_file)
 
-    def update_entry(self, entry, state):
-        entry = os.path.expanduser(entry)
-        old_state = self.db.get(entry)
-        self.db[entry] = state
+    def new_project(self, project_dir):
+        project_dir = os.path.expanduser(project_dir)
+        project_dir = os.path.abspath(os.path.normpath(project_dir))
+        project_name = os.path.split(project_dir)[1]
+        self.db[project_name] = project_dir
         self.commit_change()
-        return [old_state == state, old_state]
+
+    def remove_project(self, project_name):
+        try:
+            del self.db[project_name]
+        except KeyError:
+            logging.error(f'Could not find {project_name} in database.')
 
 class SlurmJob(object):
     def __init__(self, path, slack_info):
@@ -373,17 +401,27 @@ def make_slack_client(args):
     return (slack_web_client, slack_dm)
 
 def main(args) :
+    # database work can be done even while a lock file exists.
     db = Database(args.db)
-    if args.new_job:
-        db.update_entry(args.new_job, 'Pending')
+    if args.new_project:
+        db.new_project(args.new_project)
+
+    if args.slack_key:
+        db.slack_key = args.slack_key
+    if args.slack_dm_id:
+        db.slack_dm = args.slack_dm_id
+
+    if args.remove_project:
+        db.remove_project(args.remove_project)
+
+    if args.list_projects:
+        print('Current projects:', *db.current_projects, sep = '\n  ')
 
     if not (args.process_all or args.process_job):
         sys.exit(0)
 
-    # check lock after adding new jobs so that we can add jobs
-    # during processing. Since the DB is read only at startup, this
-    # shouldn't present any issues, and lets us include jobs in RELION
-    # launch scripts.
+    # we should only process if another instance of exa_watcher is
+    # not currently processing
     db.check_lock()
 
     if args.process_all:
@@ -399,27 +437,47 @@ def main(args) :
 parser = argparse.ArgumentParser(
     description='Check for changes in slurm jobs. Requires custom sacct output (see README).'
 )
-parser.add_argument(
-    '--new-job',
-    help = "Add a new directory to exawatcher's database. If this dir already exists its state will be reset.",
-    type = str
-)
-parser.add_argument(
-    '--process-all',
-    help = 'Run exawatchers processor on all jobs in database',
-    action = 'store_true'
-)
-parser.add_argument(
-    '--process-job',
-    help = 'Process job at the specified directory. Can be given multiple times.',
-    nargs = 1,
-    action = 'append',
-    type = str
-)
-parser.add_argument(
+database = parser.add_argument_group('database')
+database.add_argument(
     '--db',
     help = 'Alternate database location. Default is ~/exawatcher.db',
     default = os.path.join(os.path.expanduser('~'), 'exawatcher.db')
+)
+database.add_argument(
+    '--new-project',
+    help = "Add a new directory to exawatcher's database. If this dir already exists nothing will change.",
+    type = str
+)
+database.add_argument(
+    '--list-projects',
+    help = 'List currently tracked projects',
+    action = 'store_true'
+)
+database.add_argument(
+    '--remove-project',
+    help = "Stop tracking project. Use project name, not full path. Does not delete data."
+)
+database.add_argument(
+    '--slack-key',
+    help = 'Update or add Slack key to database. Must run at least once before first time processing.'
+)
+database.add_argument(
+    '--slack-dm-id',
+    help = 'Update or add Slack DM id. Must run at least once before first time processing.'
+)
+
+process = parser.add_argument_group('process')
+process.add_argument(
+    '--process-all',
+    help = "Run exawatcher's processor on all jobs in database",
+    action = 'store_true'
+)
+process.add_argument(
+    '--process-project',
+    help = 'Process specified project name (not path). Can be given multiple times.',
+    nargs = 1,
+    action = 'append',
+    type = str
 )
 
 args = parser.parse_args()

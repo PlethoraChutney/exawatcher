@@ -91,7 +91,12 @@ class Project(object):
         self.slack_info = slack_info
 
         self.available_job_types = {
-
+            'Class3D': JobClass3D,
+            'CtfRefine': JobCtfRefine,
+            'Extract': JobExtract,
+            'InitialModel': JobInitialModel,
+            'PostProcess': JobPostProcess,
+            'Refine3D': JobRefine3D
         }
 
     def __repr__(self):
@@ -111,41 +116,73 @@ class Project(object):
                 job_type = False
 
             if job_type:
-                self.usable_jobs[job_num] = self.available_job_types[job_type](job, self.slack_info)
+                self.usable_jobs[job_num] = self.available_job_types[job_type](
+                    job,
+                    self.project_name,
+                    job_num,
+                    self.slack_info
+                )
 
+    def process_jobs(self):
         for job in self.usable_jobs.values():
-            print(job.old_status)
-
+            if job.has_udpated:
+                if job.status == 'Finished':
+                    job.finished_process()
+                
+                job.announce()
 
 
 class RelionJob(object):
-    def __init__(self, path, slack_info):
+    def __init__(self, path, project, number, slack_info):
         self.path = path
+        self.project = project
+        self.number = number
+        # exapath is where we'll store all the crap for exawatcher
+        # like current job status and any files/images we make
         self.exapath = os.path.join(path, '.exawatcher')
         self.status_path = os.path.join(self.exapath, 'last_status')
         self.slack_client = slack_info['client']
         self.slack_dm = slack_info['dm']
-        self.message = ''
         self.files = []
 
         if not os.path.exists(self.exapath):
             os.makedirs(self.exapath)
             with open(self.status_path, 'w') as f:
                 f.write('Pending')
-            self.status = 'Pending'
             self.old_status = 'Pending'
 
         else:
             with open(self.status_path, 'r') as f:
                 self.old_status = f.readline().strip()
 
-            self.status = self.old_status
+        self.check_status()
+
+        self.message = f'Job {self.number} in project {self.project} has '
+        if self.status == 'Finished':
+            self.message += 'finished.'
+        else:
+            self.message += f'changed from {self.old_status} to {self.status}.'
+
+    def check_status(self):
+        status = 'Pending'
+        # RELION writes a series of files during a job's lifetime. I've decided
+        # their heirarchy somewhat manually here.
+        if os.path.exists(os.path.join(self.path, 'run.out')):
+            status = 'Running'
+        if os.path.exists(os.path.join(self.path, 'RELION_EXIT_FAILURE')):
+            status = 'Failed'
+        if os.path.exists(os.path.join(self.path, 'RELION_EXIT_ABORTED')):
+            status = 'User Abort'
+        if os.path.exists(os.path.join(self.path, 'RELION_EXIT_SUCCESS')):
+            status = 'Finished'
+
+        self.status = status
 
     @property
     def has_updated(self):
         return self.status != self.old_status
 
-    def update_status(self, new_status):
+    def write_status(self, new_status):
         with open(self.status_path, 'w') as f:
             f.write(new_status)
 
@@ -154,7 +191,7 @@ class RelionJob(object):
             channel = self.slack_dm,
             text = self.message
         )
-        for filename in self.info.files:
+        for filename in self.files:
             self.slack_client.files_upload(
                 channels = self.slack_dm,
                 file = filename,
@@ -302,82 +339,6 @@ class JobCtfRefine(RelionJob):
     def finished_process(self):
         self.files.append(os.path.join(self.path, 'logfile.pdf'))
 
-class SlurmJob:
-    def __init__(self, sacct_row) -> None:
-        self.id, self.name, self.state, self.code = sacct_row
-
-    def __repr__(self) -> str:
-        return f'Job {self.id} named {self.name}: {self.state}'
-
-    def write_json(self) -> None:
-        with open(f'job_{self.id}.json', 'w') as f:
-            json.dump({
-                'id': self.id,
-                'name': self.name,
-                'state': self.state,
-                'code': self.code
-            }, f)
-
-    def announce(self, slack_client, slack_dm, old_state = None) -> None:
-        if old_state:
-            self.message = f'Hi! Job {self.name} ({self.id}) has changed from {old_state} to {self.state}.'
-        else:
-            self.message = f'Hi! Job {self.name} ({self.id}) has changed to {self.state}.'
-        match = re.search(job_regex, self.name)
-        if match and self.state == 'COMPLETED':
-            self.info = RunInfo(f'{data_location}/{match.group(1)}/*/job{match.group(2)}/run.out')
-            self.message += self.info.message
-
-        result = slack_client.chat_postMessage(
-            channel = slack_dm,
-            text = self.message
-        )
-        try:
-            if self.info.files:
-                for filename in self.info.files:
-                    slack_client.files_upload(
-                        channels = slack_dm,
-                        file = filename,
-                        thread_ts = result['ts'],
-                        filetype = 'png'
-                    )
-        except AttributeError:
-            pass
-
-def slurm_from_json(file):
-    with open(file, 'r') as f:
-        sacct_row = json.load(f)
-        return SlurmJob((tuple(sacct_row.values())))
-
-def slurms_from_sacct(file):
-    slurms = []
-    for row in read_sa(file):
-        slurms.append(SlurmJob(row))
-
-    return slurms
-
-def compare_sa(old, new, client, dm):
-    # remove old JSONs that aren't required anymore
-    new_ids = [x.id for x in new]
-    for slurm in [x.id for x in old if x.id not in new_ids]:
-        os.remove(f'job_{slurm}.json')
-
-    # announce jobs that have changed state
-    for new_slurm in new:
-        if new_slurm.state != "PENDING":
-            try:
-                old_slurm = next(x for x in old if x.id == new_slurm.id)
-                if old_slurm.state != new_slurm.state:
-                    new_slurm.announce(client, dm, old_slurm.state)
-            except StopIteration:
-                new_slurm.announce(client, dm)
-
-        new_slurm.write_json()
-
-def manual_process(job_name, client, dm):
-    job = SlurmJob(['Manual Process', job_name, 'COMPLETED', '0:0'])
-    job.announce(client, dm, 'MANUAL')
-
 def create_slack_client(slack_key) -> WebClient:
     slack_web_client = WebClient(token=slack_key)
 
@@ -388,7 +349,6 @@ def create_slack_client(slack_key) -> WebClient:
         sys.exit(2)
 
     return slack_web_client
-
 
 def main(args) :
     # database work can be done even while a lock file exists.

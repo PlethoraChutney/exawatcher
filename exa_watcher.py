@@ -60,6 +60,10 @@ class Database(object):
         else:
             open(self.lock_file, 'a').close()
 
+    def clear_lock(self):
+        if os.path.exists(self.lock_file):
+            os.remove(self.lock_file)
+
     def commit_change(self):
         with open(self.db_path, 'w') as f:
             json.dump(self.db, f)
@@ -173,7 +177,7 @@ class RelionJob(object):
 
         greetings = [
             'How are you?',
-            'Hope you\'re well',
+            'Hope you\'re well.',
             "How's it going?",
             "How's research?",
             "When are you going to graduate? Haha, anyway.",
@@ -265,10 +269,8 @@ class JobRefine3D(RelionJob):
         relevant_lines = []
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
             for line in f:
-                final_res = re.match('Auto-refine: \+ Final resolution \(without masking\) is: ([0-9.]+)', line)
-
-                if final_res:
-                    final_res = final_res.group(1)
+                if 'Final resolution (without masking)' in line:
+                    final_res = re.search('[0-9.]+', line).group(0)
                     self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/run_class001.mrc`'
                     break
 
@@ -411,6 +413,9 @@ def main(args) :
         slack_client = create_slack_client(db.slack_key)
         slack_client.chat_postMessage(channel = db.slack_dm, text = 'Slack client successful.')
 
+    if args.clear_lock:
+        db.clear_lock()
+
     if not (args.process_all or args.process_project):
         sys.exit(0)
 
@@ -422,6 +427,7 @@ def main(args) :
         process_targets = db.current_projects
     else:
         process_targets = args.process_project
+        print(process_targets)
 
     slack_info = {
         'client': create_slack_client(db.slack_key),
@@ -467,6 +473,11 @@ database.add_argument(
     '--slack-dm-id',
     help = 'Update or add Slack DM id. Must run at least once before first time processing.'
 )
+database.add_argument(
+    '--clear-lock',
+    help = 'Delete lock file. Do this if you had an error and need to process again.',
+    action = 'store_true'
+)
 
 process = parser.add_argument_group('process')
 process.add_argument(
@@ -477,7 +488,6 @@ process.add_argument(
 process.add_argument(
     '--process-project',
     help = 'Process specified project name (not path). Can be given multiple times.',
-    nargs = 1,
     action = 'append',
     type = str
 )

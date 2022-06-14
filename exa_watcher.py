@@ -257,7 +257,10 @@ class RelionJob(object):
         z_dim = np.sum(map, axis = 2)
 
         concat = np.concatenate((x_dim, y_dim, z_dim), axis = 1)
-        concat = concat + np.abs(np.min(concat))
+        # set the concatenated projections to all have the same
+        # scale, with the darkest pixel 0 and the brightest pixel 1
+        concat = concat  - np.min(concat)
+        concat = np.divide(concat, np.max(concat))
         concat = skimage.img_as_ubyte(concat)
         outfile = os.path.join(
             self.exapath,

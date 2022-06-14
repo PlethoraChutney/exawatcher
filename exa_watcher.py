@@ -334,6 +334,7 @@ class JobClass3D(RelionJob):
 
         plt.xlabel('Iteration number')
         plt.ylabel('Percent particle membership')
+        plt.ylim(0, 1)
         plt.legend(loc = 'upper left')
 
         outpath = os.path.join(self.exapath, 'classes_over_time.png')

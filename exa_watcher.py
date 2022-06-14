@@ -163,7 +163,7 @@ class RelionJob(object):
         else:
             try:
                 with open(self.status_path, 'r') as f:
-                    self.old_status = f.readline().strip()
+                    self.old_status = f.readline().rstrip()
             except FileNotFoundError:
                 with open(self.status_path, 'a') as f:
                     f.write('Pending')

@@ -163,7 +163,7 @@ class RelionJob(object):
         else:
             try:
                 with open(self.status_path, 'r') as f:
-                    self.old_status = f.readline().strip()
+                    self.old_status = f.readline().rstrip()
             except FileNotFoundError:
                 with open(self.status_path, 'a') as f:
                     f.write('Pending')
@@ -243,7 +243,6 @@ class RelionJob(object):
         labels = [round(float(x), 1) for x in fsc_data.rlnAngstromResolution[3::10]]
         plt.xticks(positions, labels)
         plt.grid(color = '#EEEEEE')
-        plt.axhline(y = 0.143, color = '#AFAFAF', linestyle = '-')
 
         outpath = os.path.join(self.exapath, 'fsc.png')
         fig.savefig(outpath)
@@ -352,7 +351,7 @@ class JobPostProcess(RelionJob):
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
             for line in f:
                 if 'FINAL RESOLUTION' in line:
-                    final_res = re.search('[0-9.]+').group(0)
+                    final_res = re.search('[0-9.]+', line).group(0)
 
         self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/postprocess.mrc`'
 
@@ -438,7 +437,6 @@ def main(args) :
         process_targets = db.current_projects
     else:
         process_targets = args.process_project
-        print(process_targets)
 
     slack_info = {
         'client': create_slack_client(db.slack_key),

@@ -319,7 +319,7 @@ class JobClass3D(RelionJob):
             else:
                 classes_over_time = classes_over_time.join(cm)
 
-        self.message += f'\nMap location: `{self.path}/run_it025_class*.mrc`'
+        self.message += f'\nMap location: `{self.path}/run_it{max_it}_class*.mrc`'
 
         class_memb_table = classes_over_time[iterations[-1]]
         self.message += f'\nClass Membership (fraction of particles)\n```{str(class_memb_table)}```'

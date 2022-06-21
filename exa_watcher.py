@@ -294,14 +294,7 @@ class JobClass3D(RelionJob):
     def __init__(self, path, project, number, slack_info):
         super().__init__(path, project, number, slack_info)
 
-    def finished_process(self):
-        mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
-        iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
-        iterations = list(set(iterations))
-        iterations.sort()
-        max_it = iterations[-1]
-        maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
-
+    def make_class_membership_plot(self, iterations):
         classes_over_time = None
 
         for iteration in iterations:
@@ -342,6 +335,58 @@ class JobClass3D(RelionJob):
         outpath = os.path.join(self.exapath, 'classes_over_time.png')
         fig.savefig(outpath)
         self.files.append(outpath)
+
+    def make_particle_stability_plot(self):
+        model_stars = glob.glob(os.path.join(self.path, 'run_it*_data.star'))
+        model_stars.sort()
+
+        def read_star(new_starfile):
+            current_classes = starfile.read(new_starfile)['particles']
+            current_classes = current_classes[['rlnImageName', 'rlnClassNumber']]
+            current_classes.rename(columns = {'rlnImageName': 'Particle', 'rlnClassNumber': 'new_class'}, inplace = True)
+            current_classes.set_index('Particle', inplace = True)
+
+            return current_classes
+
+        current_classes = read_star(model_stars.pop(0))
+        current_classes.rename(columns = {'new_class': 'old_class'}, inplace = True)
+        current_iter = 0
+        iter_movement = {}
+        while model_stars:
+            star = read_star(model_stars.pop(0))
+            current_iter += 1
+            current_classes = current_classes.join(star)
+            current_classes = current_classes.assign(
+                changed_class = lambda x: x.old_class != x.new_class
+            )
+            particles_moved = sum(current_classes['changed_class'])
+            proportion_moved = particles_moved/current_classes.shape[0]
+            iter_movement[current_iter] = proportion_moved
+
+            current_classes.drop(['changed_class', 'old_class'], axis = 1, inplace = True)
+            current_classes.rename(columns = {'new_class': 'old_class'}, inplace = True)
+
+        fig = plt.figure()
+        plt.plot(list(iter_movement.keys()), list(iter_movement.values()), '-o')
+
+        plt.xlabel('Iteration number')
+        plt.ylabel('Proportion of particles changing class')
+        plt.ylim(0, 1)
+
+        outpath = os.path.join(self.exapath, 'particle_stability.png')
+        fig.savefig(outpath)
+        self.files.append(outpath)
+
+    def finished_process(self):
+        mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
+        iterations = [re.search('it([0-9]{3})', x).group(1) for x in mrcs]
+        iterations = list(set(iterations))
+        iterations.sort()
+        max_it = iterations[-1]
+        maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
+
+        self.make_class_membership_plot(iterations)
+        self.make_particle_stability_plot()
 
         for vol in maps_to_project:
             self.make_projection(vol)

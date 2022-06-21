@@ -297,6 +297,8 @@ class JobClass3D(RelionJob):
     def make_class_membership_plot(self, iterations):
         classes_over_time = None
 
+        max_it = iterations[-1]
+
         for iteration in iterations:
             star_files = starfile.read(f'{self.path}/run_it{iteration}_model.star')
             cm = star_files['model_classes']
@@ -355,7 +357,7 @@ class JobClass3D(RelionJob):
         while model_stars:
             star = read_star(model_stars.pop(0))
             current_iter += 1
-            current_classes = current_classes.join(star)
+            current_classes = current_classes.join(star, how = 'outer')
             current_classes = current_classes.assign(
                 changed_class = lambda x: x.old_class != x.new_class
             )

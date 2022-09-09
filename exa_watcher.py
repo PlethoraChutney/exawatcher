@@ -282,7 +282,7 @@ class JobRefine3D(RelionJob):
         relevant_lines = []
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
             for line in f:
-                if 'Final resolution (without masking)' in line:
+                if 'Final resolution' in line:
                     final_res = re.search('[0-9.]+', line).group(0)
                     self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/run_class001.mrc`'
                     break

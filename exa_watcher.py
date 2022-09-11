@@ -431,7 +431,7 @@ class JobInitialModel(RelionJob):
         max_it = iterations[-1]
         maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
         for vol in maps_to_project:
-            self.message += f"\nMap location: `{self.path}/run_it300_class*.mrc`"
+            self.message += f"\nMap location: `{self.path}/run_it{max_it}_class*.mrc`"
             self.make_projection(vol)
 
 class JobCtfRefine(RelionJob):
@@ -440,6 +440,32 @@ class JobCtfRefine(RelionJob):
 
     def finished_process(self):
         self.files.append(os.path.join(self.path, 'logfile.pdf'))
+
+class JobMultiBody(RelionJob):
+    def __init__(self, path, project, number, slack_info):
+        super().__init__(path, project, number, slack_info)
+
+    def finished_process(self):
+        with open(f'{self.path}/run.out', 'r') as f:
+            lines = [x.rstrip() for x in f]
+
+        for line in lines:
+            if 'Final reconstructions of each body' in line:
+                words = line.split(' ')
+                map_path = [x for x in words if 'MultiBody' in x][0]
+                map_loc = map_path.split('/')[-1].replace('NNN', '???')
+
+            elif 'Final resolution' in line:
+                self.message += f'\nFinal resolution: {line.split(" ")[-1]}'
+
+            elif 'explain' in line and 'variance' in line:
+                self.message += f'\n{line}'
+
+        mrcs = glob.glob(f'{self.path}/{map_loc}')
+        self.message += f"\nMap location: {self.path}/{map_loc}"
+
+        for vol in mrcs:
+            self.make_projection(vol)
 
 def create_slack_client(slack_key) -> WebClient:
     slack_web_client = WebClient(token=slack_key)

@@ -105,7 +105,8 @@ class Project(object):
             'Extract': JobExtract,
             'InitialModel': JobInitialModel,
             'PostProcess': JobPostProcess,
-            'Refine3D': JobRefine3D
+            'Refine3D': JobRefine3D,
+            'MultiBody': JobMultiBody
         }
 
     def __repr__(self):

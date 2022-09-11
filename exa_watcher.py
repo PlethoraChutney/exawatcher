@@ -24,7 +24,9 @@ import matplotlib.pyplot as plt
 pd.options.mode.chained_assignment = None
 
 class Settings(object):
-    def __init__(self, settings_dict:dict = {}):
+    def __init__(self, settings_dict:dict = None):
+        if settings_dict is None:
+            settings_dict = {}
         self.settings = settings_dict
 
     @property
@@ -117,10 +119,11 @@ class Database(object):
 
 
 class Project(object):
-    def __init__(self, project_name, project_dir, slack_info):
+    def __init__(self, project_name, project_dir, slack_info, settings):
         self.project_name = project_name
         self.project_dir = project_dir
         self.slack_info = slack_info
+        self.settings = settings
 
         self.available_job_types = {
             'Class3D': JobClass3D,
@@ -153,7 +156,8 @@ class Project(object):
                     job,
                     self.project_name,
                     job_num,
-                    self.slack_info
+                    self.slack_info,
+                    self.settings
                 )
 
     def process_jobs(self, force = False):
@@ -166,7 +170,7 @@ class Project(object):
 
 
 class RelionJob(object):
-    def __init__(self, path, project, number, slack_info):
+    def __init__(self, path, project, number, slack_info, settings:Settings):
         self.path = path
         self.project = project
         self.number = number
@@ -176,6 +180,7 @@ class RelionJob(object):
         self.status_path = os.path.join(self.exapath, 'last_status.txt')
         self.slack_client = slack_info['client']
         self.slack_dm = slack_info['dm']
+        self.settings = settings
         self.files = []
 
         if not os.path.exists(self.exapath):
@@ -272,25 +277,34 @@ class RelionJob(object):
         fig.savefig(outpath)
         self.files.append(outpath)
     
-    def make_projection(self, map_filename):
-        with mrcfile.open(map_filename) as mrc:
-            map = mrc.data
+    def process_map(self, map_filename):
+        with mrcfile.open('example.mrc') as f:
+            mrc = f.data
 
-        x_dim = np.sum(map, axis = 0)
-        y_dim = np.sum(map, axis = 1)
-        z_dim = np.sum(map, axis = 2)
+        if self.settings.map_process == 'projection':
+            x_dim = np.sum(mrc, axis = 0)
+            y_dim = np.sum(mrc, axis = 1)
+            z_dim = np.sum(mrc, axis = 2)
+        elif self.settings.map_process == 'slice':
+            middle_slice = int((mrc.shape[0]-1)/2)
+            x_dim = mrc[middle_slice,:,:]
+            y_dim = mrc[:,middle_slice,:]
+            z_dim = mrc[:,:,middle_slice]
 
-        concat = np.concatenate((x_dim, y_dim, z_dim), axis = 1)
-        # set the concatenated projections to all have the same
-        # scale, with the darkest pixel 0 and the brightest pixel 1
-        concat = concat  - np.min(concat)
-        concat = np.divide(concat, np.max(concat))
-        concat = skimage.img_as_ubyte(concat)
+        fig, (axx, axy, axz) = plt.subplots(
+            ncols = 3,
+            sharey = True
+        )
+        axx.imshow(x_dim)
+        axy.imshow(y_dim)
+        axz.imshow(z_dim)
+        fig.tight_layout()
+        
         outfile = os.path.join(
             self.exapath,
-           os.path.split( map_filename)[1][:-4] + '_projected.png'
+            os.path.split( map_filename)[1][:-4] + '_projected.png'
         )
-        skimage.io.imsave(outfile, concat)
+        fig.savefig(outfile)
 
         self.files.append(outfile)
 
@@ -544,7 +558,12 @@ def main(args) :
     }
 
     for project_name in process_targets:
-        current_processor = Project(project_name, db.db['projects'].get(project_name), slack_info)
+        current_processor = Project(
+            project_name,
+            db.db['projects'].get(project_name),
+            slack_info,
+            Settings(db.db.get('settings'))
+        )
         current_processor.scan_for_jobs()
         if not args.no_process:
             current_processor.process_jobs(force = args.force_process)

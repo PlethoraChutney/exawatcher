@@ -31,7 +31,14 @@ class Database(object):
         self.lock_file = os.path.join(self.db_dir, '.dblock')
         try:
             with open(self.db_path, 'r') as f:
-                self.db = json.load(f)
+                db_json = json.load(f)
+                if 'version' not in db_json:
+                    projects = [x for x in db_json.keys() if x not in ['slack_key', 'slack_dm']]
+                    db_json['projects'] = {x: db_json[x] for x in projects}
+                    for name in projects:
+                        del db_json[name]
+                    db_json['version'] = 1
+                self.db = db_json
         except FileNotFoundError:
             self.db = {}
 
@@ -55,12 +62,12 @@ class Database(object):
 
     @property
     def current_projects(self):
-        return [x for x in self.db.keys() if x not in ['slack_key', 'slack_dm']]
+        return self.db['projects'].keys()
 
     def check_lock(self):
         if os.path.exists(self.lock_file):
             logging.info('Lock file exists. Exiting.')
-            sys.exit(0)
+            sys.exit(1)
         else:
             open(self.lock_file, 'a').close()
 
@@ -83,12 +90,12 @@ class Database(object):
             logging.error('Give a path to a RELION project.')
             sys.exit(1)
         project_name = os.path.split(project_dir)[1]
-        self.db[project_name] = project_dir
+        self.db['projects'][project_name] = project_dir
         self.commit_change()
 
     def remove_project(self, project_name):
         try:
-            del self.db[project_name]
+            del self.db['projects'][project_name]
         except KeyError:
             logging.error(f'Could not find {project_name} in database.')
 
@@ -494,7 +501,7 @@ def main(args) :
         db.remove_project(args.remove_project)
 
     if args.list_projects:
-        print('Current projects:', *db.current_projects, sep = '\n  ')
+        print('Current projects:', *list(db.current_projects), sep = '\n  ')
 
     if args.test_slack:
         slack_client = create_slack_client(db.slack_key)
@@ -521,7 +528,7 @@ def main(args) :
     }
 
     for project_name in process_targets:
-        current_processor = Project(project_name, db.db.get(project_name), slack_info)
+        current_processor = Project(project_name, db.db['projects'].get(project_name), slack_info)
         current_processor.scan_for_jobs()
         if not args.no_process:
             current_processor.process_jobs(force = args.force_process)

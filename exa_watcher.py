@@ -454,7 +454,7 @@ class JobMultiBody(RelionJob):
             if 'Final reconstructions of each body' in line:
                 words = line.split(' ')
                 map_path = [x for x in words if 'MultiBody' in x][0]
-                map_loc = map_path.split('/')[-1].replace('NNN', '???')
+                map_loc = map_path.split('/')[-1].replace('NNN', '???').replace(',', '')
 
             elif 'Final resolution' in line:
                 self.message += f'\nFinal resolution: {line.split(" ")[-1]}'
@@ -463,8 +463,7 @@ class JobMultiBody(RelionJob):
                 self.message += f'\n{line}'
 
         mrcs = glob.glob(f'{self.path}/{map_loc}')
-        print(mrcs)
-        self.message += f"\nMap location: {self.path}/{map_loc}"
+        self.message += f"\nMap location: `{self.path}/{map_loc}`"
 
         for vol in mrcs:
             self.make_projection(vol)

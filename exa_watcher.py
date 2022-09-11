@@ -23,6 +23,22 @@ import matplotlib.pyplot as plt
 # remove annoying pandas error message
 pd.options.mode.chained_assignment = None
 
+class Settings(object):
+    def __init__(self, settings_dict:dict = {}):
+        self.settings = settings_dict
+
+    @property
+    def map_process(self):
+        if 'projection' not in self.settings:
+            return 'projection'
+        else:
+            return self.settings['projection']
+
+    @map_process.setter
+    def map_process(self, projection_setting):
+        assert projection_setting in ['projection', 'slice']
+        self.settings['projection'] == projection_setting
+
 class Database(object):
     def __init__(self, db_path):
         self.db_path = db_path

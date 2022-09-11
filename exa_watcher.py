@@ -459,10 +459,11 @@ class JobMultiBody(RelionJob):
             elif 'Final resolution' in line:
                 self.message += f'\nFinal resolution: {line.split(" ")[-1]}'
 
-            elif 'explain' in line and 'variance' in line:
+            elif 'The first' in line and 'explain' in line and 'variance' in line:
                 self.message += f'\n{line}'
 
         mrcs = glob.glob(f'{self.path}/{map_loc}')
+        print(mrcs)
         self.message += f"\nMap location: {self.path}/{map_loc}"
 
         for vol in mrcs:

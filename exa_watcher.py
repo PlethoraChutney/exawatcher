@@ -23,6 +23,24 @@ import matplotlib.pyplot as plt
 # remove annoying pandas error message
 pd.options.mode.chained_assignment = None
 
+class Settings(object):
+    def __init__(self, settings_dict:dict = None):
+        if settings_dict is None:
+            settings_dict = {}
+        self.settings = settings_dict
+
+    @property
+    def map_process(self):
+        if 'projection' not in self.settings:
+            return 'projection'
+        else:
+            return self.settings['projection']
+
+    @map_process.setter
+    def map_process(self, projection_setting):
+        assert projection_setting in ['projection', 'slice']
+        self.settings['projection'] = projection_setting
+
 class Database(object):
     def __init__(self, db_path):
         self.db_path = db_path
@@ -41,6 +59,8 @@ class Database(object):
                 self.db = db_json
         except FileNotFoundError:
             self.db = {}
+
+        self.settings = Settings(self.db.get('settings'))
 
     @property
     def slack_key(self):
@@ -76,6 +96,7 @@ class Database(object):
             os.remove(self.lock_file)
 
     def commit_change(self):
+        self.db['settings'] = self.settings.settings
         with open(self.db_path, 'w') as f:
             json.dump(self.db, f)
 
@@ -101,10 +122,11 @@ class Database(object):
 
 
 class Project(object):
-    def __init__(self, project_name, project_dir, slack_info):
+    def __init__(self, project_name, project_dir, slack_info, settings):
         self.project_name = project_name
         self.project_dir = project_dir
         self.slack_info = slack_info
+        self.settings = settings
 
         self.available_job_types = {
             'Class3D': JobClass3D,
@@ -137,7 +159,8 @@ class Project(object):
                     job,
                     self.project_name,
                     job_num,
-                    self.slack_info
+                    self.slack_info,
+                    self.settings
                 )
 
     def process_jobs(self, force = False):
@@ -150,7 +173,7 @@ class Project(object):
 
 
 class RelionJob(object):
-    def __init__(self, path, project, number, slack_info):
+    def __init__(self, path, project, number, slack_info, settings:Settings):
         self.path = path
         self.project = project
         self.number = number
@@ -160,6 +183,7 @@ class RelionJob(object):
         self.status_path = os.path.join(self.exapath, 'last_status.txt')
         self.slack_client = slack_info['client']
         self.slack_dm = slack_info['dm']
+        self.settings = settings
         self.files = []
 
         if not os.path.exists(self.exapath):
@@ -256,25 +280,36 @@ class RelionJob(object):
         fig.savefig(outpath)
         self.files.append(outpath)
     
-    def make_projection(self, map_filename):
-        with mrcfile.open(map_filename) as mrc:
-            map = mrc.data
+    def process_map(self, map_filename):
+        with mrcfile.open(map_filename) as f:
+            mrc = f.data
 
-        x_dim = np.sum(map, axis = 0)
-        y_dim = np.sum(map, axis = 1)
-        z_dim = np.sum(map, axis = 2)
+        if self.settings.map_process == 'projection':
+            x_dim = np.sum(mrc, axis = 0)
+            y_dim = np.sum(mrc, axis = 1)
+            z_dim = np.sum(mrc, axis = 2)
+            imtype = 'projection'
+        elif self.settings.map_process == 'slice':
+            middle_slice = int((mrc.shape[0]-1)/2)
+            x_dim = mrc[middle_slice,:,:]
+            y_dim = mrc[:,middle_slice,:]
+            z_dim = mrc[:,:,middle_slice]
+            imtype = 'sliced'
 
-        concat = np.concatenate((x_dim, y_dim, z_dim), axis = 1)
-        # set the concatenated projections to all have the same
-        # scale, with the darkest pixel 0 and the brightest pixel 1
-        concat = concat  - np.min(concat)
-        concat = np.divide(concat, np.max(concat))
-        concat = skimage.img_as_ubyte(concat)
+        fig, (axx, axy, axz) = plt.subplots(
+            ncols = 3,
+            sharey = True
+        )
+        axx.imshow(x_dim)
+        axy.imshow(y_dim)
+        axz.imshow(z_dim)
+        fig.tight_layout()
+        
         outfile = os.path.join(
             self.exapath,
-           os.path.split( map_filename)[1][:-4] + '_projected.png'
+            os.path.split( map_filename)[1][:-4] + '_' + imtype +'.png'
         )
-        skimage.io.imsave(outfile, concat)
+        fig.savefig(outfile)
 
         self.files.append(outfile)
 
@@ -283,8 +318,8 @@ class RelionJob(object):
 
 
 class JobRefine3D(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         relevant_lines = []
@@ -295,12 +330,12 @@ class JobRefine3D(RelionJob):
                     self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/run_class001.mrc`'
                     break
 
-        self.make_projection(f'{self.path}/run_class001.mrc')
+        self.process_map(f'{self.path}/run_class001.mrc')
         self.make_fsc_curve()
 
 class JobClass3D(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def make_class_membership_plot(self, iterations):
         classes_over_time = None
@@ -399,11 +434,11 @@ class JobClass3D(RelionJob):
         self.make_particle_stability_plot()
 
         for vol in maps_to_project:
-            self.make_projection(vol)
+            self.process_map(vol)
 
 class JobPostProcess(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
@@ -413,11 +448,11 @@ class JobPostProcess(RelionJob):
 
         self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/postprocess.mrc`'
 
-        self.make_projection(os.path.join(self.path, 'postprocess.mrc'))
+        self.process_map(os.path.join(self.path, 'postprocess.mrc'))
 
 class JobExtract(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         with open(self.location, 'r') as f:
@@ -428,8 +463,8 @@ class JobExtract(RelionJob):
         self.message += f'\nExtracted {match}.'
 
 class JobInitialModel(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
@@ -440,18 +475,18 @@ class JobInitialModel(RelionJob):
         maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
         for vol in maps_to_project:
             self.message += f"\nMap location: `{self.path}/run_it{max_it}_class*.mrc`"
-            self.make_projection(vol)
+            self.process_map(vol)
 
 class JobCtfRefine(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         self.files.append(os.path.join(self.path, 'logfile.pdf'))
 
 class JobMultiBody(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         with open(f'{self.path}/run.out', 'r') as f:
@@ -473,7 +508,7 @@ class JobMultiBody(RelionJob):
         self.message += f"\nMap location: `{self.path}/{map_loc}`"
 
         for vol in mrcs:
-            self.make_projection(vol)
+            self.process_map(vol)
 
 def create_slack_client(slack_key) -> WebClient:
     slack_web_client = WebClient(token=slack_key)
@@ -507,6 +542,10 @@ def main(args) :
         slack_client = create_slack_client(db.slack_key)
         slack_client.chat_postMessage(channel = db.slack_dm, text = 'Slack client successful.')
 
+    if args.set_map_process:
+        db.settings.map_process = args.set_map_process
+        db.commit_change()
+
     if args.clear_lock:
         db.clear_lock()
 
@@ -528,7 +567,12 @@ def main(args) :
     }
 
     for project_name in process_targets:
-        current_processor = Project(project_name, db.db['projects'].get(project_name), slack_info)
+        current_processor = Project(
+            project_name,
+            db.db['projects'].get(project_name),
+            slack_info,
+            Settings(db.db.get('settings'))
+        )
         current_processor.scan_for_jobs()
         if not args.no_process:
             current_processor.process_jobs(force = args.force_process)
@@ -570,6 +614,13 @@ database.add_argument(
     '--clear-lock',
     help = 'Delete lock file. Do this if you had an error and need to process again.',
     action = 'store_true'
+)
+
+settings = parser.add_argument_group('settings')
+settings.add_argument(
+    '--set-map-process',
+    help = 'Process maps by sending a slice or a projection. Default projection.',
+    choices = ['projection', 'slice']
 )
 
 process = parser.add_argument_group('process')

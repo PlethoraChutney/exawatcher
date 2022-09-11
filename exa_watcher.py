@@ -96,7 +96,7 @@ class Database(object):
             os.remove(self.lock_file)
 
     def commit_change(self):
-        self.db['settings'] = self.settings
+        self.db['settings'] = self.settings.settings
         with open(self.db_path, 'w') as f:
             json.dump(self.db, f)
 
@@ -281,18 +281,20 @@ class RelionJob(object):
         self.files.append(outpath)
     
     def process_map(self, map_filename):
-        with mrcfile.open('example.mrc') as f:
+        with mrcfile.open(map_filename) as f:
             mrc = f.data
 
         if self.settings.map_process == 'projection':
             x_dim = np.sum(mrc, axis = 0)
             y_dim = np.sum(mrc, axis = 1)
             z_dim = np.sum(mrc, axis = 2)
+            imtype = 'projection'
         elif self.settings.map_process == 'slice':
             middle_slice = int((mrc.shape[0]-1)/2)
             x_dim = mrc[middle_slice,:,:]
             y_dim = mrc[:,middle_slice,:]
             z_dim = mrc[:,:,middle_slice]
+            imtype = 'sliced'
 
         fig, (axx, axy, axz) = plt.subplots(
             ncols = 3,
@@ -305,7 +307,7 @@ class RelionJob(object):
         
         outfile = os.path.join(
             self.exapath,
-            os.path.split( map_filename)[1][:-4] + '_projected.png'
+            os.path.split( map_filename)[1][:-4] + '_' + imtype +'.png'
         )
         fig.savefig(outfile)
 
@@ -316,8 +318,8 @@ class RelionJob(object):
 
 
 class JobRefine3D(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         relevant_lines = []
@@ -328,12 +330,12 @@ class JobRefine3D(RelionJob):
                     self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/run_class001.mrc`'
                     break
 
-        self.make_projection(f'{self.path}/run_class001.mrc')
+        self.process_map(f'{self.path}/run_class001.mrc')
         self.make_fsc_curve()
 
 class JobClass3D(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def make_class_membership_plot(self, iterations):
         classes_over_time = None
@@ -432,11 +434,11 @@ class JobClass3D(RelionJob):
         self.make_particle_stability_plot()
 
         for vol in maps_to_project:
-            self.make_projection(vol)
+            self.process_map(vol)
 
 class JobPostProcess(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         with open(os.path.join(self.path, 'run.out'), 'r') as f:
@@ -446,11 +448,11 @@ class JobPostProcess(RelionJob):
 
         self.message += f'\nFinal resolution: *{final_res}*\nMap at: `{self.path}/postprocess.mrc`'
 
-        self.make_projection(os.path.join(self.path, 'postprocess.mrc'))
+        self.process_map(os.path.join(self.path, 'postprocess.mrc'))
 
 class JobExtract(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         with open(self.location, 'r') as f:
@@ -461,8 +463,8 @@ class JobExtract(RelionJob):
         self.message += f'\nExtracted {match}.'
 
 class JobInitialModel(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         mrcs = glob.glob(f'{self.path}/run_it*_class*.mrc')
@@ -473,18 +475,18 @@ class JobInitialModel(RelionJob):
         maps_to_project = glob.glob(f'{self.path}/run_it{max_it}_class*.mrc')
         for vol in maps_to_project:
             self.message += f"\nMap location: `{self.path}/run_it{max_it}_class*.mrc`"
-            self.make_projection(vol)
+            self.process_map(vol)
 
 class JobCtfRefine(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         self.files.append(os.path.join(self.path, 'logfile.pdf'))
 
 class JobMultiBody(RelionJob):
-    def __init__(self, path, project, number, slack_info):
-        super().__init__(path, project, number, slack_info)
+    def __init__(self, path, project, number, slack_info, settings:Settings):
+        super().__init__(path, project, number, slack_info, settings)
 
     def finished_process(self):
         with open(f'{self.path}/run.out', 'r') as f:
@@ -506,7 +508,7 @@ class JobMultiBody(RelionJob):
         self.message += f"\nMap location: `{self.path}/{map_loc}`"
 
         for vol in mrcs:
-            self.make_projection(vol)
+            self.process_map(vol)
 
 def create_slack_client(slack_key) -> WebClient:
     slack_web_client = WebClient(token=slack_key)
@@ -542,6 +544,7 @@ def main(args) :
 
     if args.set_map_process:
         db.settings.map_process = args.set_map_process
+        db.commit_change()
 
     if args.clear_lock:
         db.clear_lock()

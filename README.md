@@ -89,7 +89,7 @@ information about the results. Right now, the only jobs that are tracked are
  - Initial Model
    - You will be sent projections of all maps
  - Refine 3D
-   - You will be sent the final unmasked resolution
+   - You will be sent the final resolution
    - You will be sent an FSC curve
    - You will be sent a map projection
  - Class 3D
@@ -100,6 +100,10 @@ information about the results. Right now, the only jobs that are tracked are
    - You will be sent a projection of the unmasked processed map
  - CTF Refine
    - You will be sent the logfile PDF
+ - MultiBody Refinement
+   - You will be sent the final resolution
+   - You will be sent information about the major eigenvectors
+   - You will be sent projections of all bodies
 
 and the current states are
 

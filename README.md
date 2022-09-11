@@ -113,6 +113,11 @@ and the current states are
  - Failed (RELION wrote "RELION_JOB_EXIT_FAILURE" to job directory)
  - Finished (job completed successfully)
 
+If you prefer slices through the middle of the map, you can set this preference
+in your database with
+
+`exa_watcher.py --set-map-process slice`
+
 To process only a specific project, use `--process-project {project name}`. You can
 force all jobs to send DMs regardless of state with
 `--force-process` but it's probably better to manually

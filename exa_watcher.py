@@ -37,7 +37,7 @@ class Settings(object):
     @map_process.setter
     def map_process(self, projection_setting):
         assert projection_setting in ['projection', 'slice']
-        self.settings['projection'] == projection_setting
+        self.settings['projection'] = projection_setting
 
 class Database(object):
     def __init__(self, db_path):
@@ -57,6 +57,8 @@ class Database(object):
                 self.db = db_json
         except FileNotFoundError:
             self.db = {}
+
+        self.settings = Settings(self.db.get('settings'))
 
     @property
     def slack_key(self):
@@ -92,6 +94,7 @@ class Database(object):
             os.remove(self.lock_file)
 
     def commit_change(self):
+        self.db['settings'] = self.settings
         with open(self.db_path, 'w') as f:
             json.dump(self.db, f)
 
@@ -523,6 +526,9 @@ def main(args) :
         slack_client = create_slack_client(db.slack_key)
         slack_client.chat_postMessage(channel = db.slack_dm, text = 'Slack client successful.')
 
+    if args.set_map_process:
+        db.settings.map_process = args.set_map_process
+
     if args.clear_lock:
         db.clear_lock()
 
@@ -586,6 +592,13 @@ database.add_argument(
     '--clear-lock',
     help = 'Delete lock file. Do this if you had an error and need to process again.',
     action = 'store_true'
+)
+
+settings = parser.add_argument_group('settings')
+settings.add_argument(
+    '--set-map-process',
+    help = 'Process maps by sending a slice or a projection. Default projection.',
+    choices = ['projection', 'slice']
 )
 
 process = parser.add_argument_group('process')

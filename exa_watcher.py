@@ -51,7 +51,7 @@ class Database(object):
             with open(self.db_path, 'r') as f:
                 db_json = json.load(f)
                 if 'version' not in db_json:
-                    projects = [x for x in db_json.keys() if x not in ['slack_key', 'slack_dm']]
+                    projects = [x for x in db_json.keys() if x not in ['slack_key', 'slack_dm', 'settings']]
                     db_json['projects'] = {x: db_json[x] for x in projects}
                     for name in projects:
                         del db_json[name]

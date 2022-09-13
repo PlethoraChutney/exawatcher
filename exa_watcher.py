@@ -385,31 +385,41 @@ class JobClass3D(RelionJob):
         model_stars = glob.glob(os.path.join(self.path, 'run_it*_data.star'))
         model_stars.sort()
 
-        def read_star(new_starfile):
-            current_classes = starfile.read(new_starfile)['particles']
-            current_classes = current_classes[['rlnImageName', 'rlnClassNumber']]
-            current_classes.rename(columns = {'rlnImageName': 'Particle', 'rlnClassNumber': 'new_class'}, inplace = True)
-            current_classes.set_index('Particle', inplace = True)
+        def process_star_file(starfile):
+            with open(starfile, 'r') as f:
+                lines = [x.rstrip() for x in f]
 
-            return current_classes
+            line = lines.pop(0)
+            while line != '_rlnNrOfSignificantSamples #22':
+                line = lines.pop(0)
 
-        current_classes = read_star(model_stars.pop(0))
-        current_classes.rename(columns = {'new_class': 'old_class'}, inplace = True)
+            line = lines.pop(0)
+            particles = {}
+            linelen = len(line.split())
+            for line in lines:
+                if not line:
+                    continue
+                line = line.split()
+                assert len(line) == linelen, line
+                try:
+                    particle_name = line[0]
+                    particle_class = line[16]
+                    particles[particle_name] = particle_class
+                except IndexError:
+                    continue
+
+            return particles
+
+        current_classes = process_star_file(model_stars.pop(0))
         current_iter = 0
         iter_movement = {}
         while model_stars:
-            star = read_star(model_stars.pop(0))
             current_iter += 1
-            current_classes = current_classes.join(star, how = 'outer')
-            current_classes = current_classes.assign(
-                changed_class = lambda x: x.old_class != x.new_class
-            )
-            particles_moved = sum(current_classes['changed_class'])
-            proportion_moved = particles_moved/current_classes.shape[0]
+            prev_classes = current_classes
+            current_classes = process_star_file(model_stars.pop(0))
+            particles_moved = sum(current_classes[particle] != prev_classes.get(particle) for particle in current_classes.keys())
+            proportion_moved = particles_moved/len(list(current_classes.keys()))
             iter_movement[current_iter] = proportion_moved
-
-            current_classes.drop(['changed_class', 'old_class'], axis = 1, inplace = True)
-            current_classes.rename(columns = {'new_class': 'old_class'}, inplace = True)
 
         fig = plt.figure()
         plt.plot(list(iter_movement.keys()), list(iter_movement.values()), '-o')

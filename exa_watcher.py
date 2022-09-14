@@ -135,7 +135,8 @@ class Project(object):
             'InitialModel': JobInitialModel,
             'PostProcess': JobPostProcess,
             'Refine3D': JobRefine3D,
-            'MultiBody': JobMultiBody
+            'MultiBody': JobMultiBody,
+            'MaskCreate': JobCreateMask
         }
 
     def __repr__(self):
@@ -309,7 +310,7 @@ class RelionJob(object):
             self.exapath,
             os.path.split( map_filename)[1][:-4] + '_' + imtype +'.png'
         )
-        fig.savefig(outfile)
+        plt.savefig(outfile, bbox_inches = 'tight')
 
         self.files.append(outfile)
 
@@ -519,6 +520,13 @@ class JobMultiBody(RelionJob):
 
         for vol in mrcs:
             self.process_map(vol)
+
+class JobCreateMask(RelionJob):
+    def __init__(self, path, project, number, slack_info, settings: Settings):
+        super().__init__(path, project, number, slack_info, settings)
+
+    def finished_process(self):
+        self.process_map(os.path.join(self.path, 'mask.mrc'))
 
 def create_slack_client(slack_key) -> WebClient:
     slack_web_client = WebClient(token=slack_key)

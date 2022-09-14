@@ -88,6 +88,8 @@ information about the results. Right now, the only jobs that are tracked are
    - You will be sent the number of particles
  - Initial Model
    - You will be sent projections of all maps
+ - Mask Creation
+   - You will be sent projections of the final mask
  - Refine 3D
    - You will be sent the final resolution
    - You will be sent an FSC curve

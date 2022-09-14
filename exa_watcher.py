@@ -29,6 +29,17 @@ class Settings(object):
             settings_dict = {}
         self.settings = settings_dict
 
+        self.job_types = {
+            'Class3D': JobClass3D,
+            'CtfRefine': JobCtfRefine,
+            'Extract': JobExtract,
+            'InitialModel': JobInitialModel,
+            'PostProcess': JobPostProcess,
+            'Refine3D': JobRefine3D,
+            'MultiBody': JobMultiBody,
+            'MaskCreate': JobCreateMask
+        }
+
     @property
     def map_process(self):
         if 'projection' not in self.settings:
@@ -40,6 +51,32 @@ class Settings(object):
     def map_process(self, projection_setting):
         assert projection_setting in ['projection', 'slice']
         self.settings['projection'] = projection_setting
+
+    @property
+    def ignore_jobs(self) -> list:
+        if 'ignore_jobs' not in self.settings:
+            return []
+        else:
+            return self.settings['ignore_jobs']
+
+    @property
+    def available_jobs(self):
+        return {x: self.job_types[x] for x in self.job_types.keys() if x not in self.ignore_jobs}
+
+    def toggle_ignore_job(self, job_type):
+        assert job_type in self.job_types.keys()
+
+        ignore_job_list = self.ignore_jobs
+
+        if job_type in ignore_job_list:
+            ignore_job_list.remove(job_type)
+            self.settings['ignore_jobs'] = ignore_job_list
+            return f'Now processing {job_type}'
+        else:
+            ignore_job_list.append(job_type)
+            self.settings['ignore_jobs'] = ignore_job_list
+            return f'Now ignoring {job_type}'
+            
 
 class Database(object):
     def __init__(self, db_path):
@@ -128,17 +165,6 @@ class Project(object):
         self.slack_info = slack_info
         self.settings = settings
 
-        self.available_job_types = {
-            'Class3D': JobClass3D,
-            'CtfRefine': JobCtfRefine,
-            'Extract': JobExtract,
-            'InitialModel': JobInitialModel,
-            'PostProcess': JobPostProcess,
-            'Refine3D': JobRefine3D,
-            'MultiBody': JobMultiBody,
-            'MaskCreate': JobCreateMask
-        }
-
     def __repr__(self):
         return f'Project {self.project_name}'
 
@@ -148,7 +174,7 @@ class Project(object):
         for job in all_jobs:
             job_num = re.search('job([0-9]{3})', job).group(1)
 
-            job_type = [x for x in self.available_job_types.keys() if x in job]
+            job_type = [x for x in self.settings.available_jobs.keys() if x in job]
             try:
                 job_type = job_type[0]
             except IndexError:
@@ -156,7 +182,7 @@ class Project(object):
                 job_type = False
 
             if job_type:
-                self.usable_jobs[job_num] = self.available_job_types[job_type](
+                self.usable_jobs[job_num] = self.settings.available_jobs[job_type](
                     job,
                     self.project_name,
                     job_num,
@@ -564,6 +590,11 @@ def main(args) :
         db.settings.map_process = args.set_map_process
         db.commit_change()
 
+    if args.toggle_job_process:
+        for job_type in args.toggle_job_process:
+            print(db.settings.toggle_ignore_job(job_type))
+        db.commit_change()
+
     if args.clear_lock:
         db.clear_lock()
 
@@ -639,6 +670,21 @@ settings.add_argument(
     '--set-map-process',
     help = 'Process maps by sending a slice or a projection. Default projection.',
     choices = ['projection', 'slice']
+)
+settings.add_argument(
+    '--toggle-job-process',
+    help = 'Toggle whether a job type is processed.',
+    choices = [
+        'Class3D',
+        'CtfRefine',
+        'Extract',
+        'InitialModel',
+        'PostProcess',
+        'Refine3D',
+        'MultiBody',
+        'MaskCreate'
+    ],
+    nargs='+'
 )
 
 process = parser.add_argument_group('process')

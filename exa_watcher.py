@@ -172,7 +172,10 @@ class Project(object):
         self.usable_jobs = {}
         all_jobs = glob.glob(os.path.join(self.project_dir, '*', 'job*'))
         for job in all_jobs:
-            job_num = re.search('job([0-9]{3})', job).group(1)
+            try:
+              job_num = re.search('job([0-9]{3})', job).group(1)
+            except AttributeError:
+              continue
 
             job_type = [x for x in self.settings.available_jobs.keys() if x in job]
             try:

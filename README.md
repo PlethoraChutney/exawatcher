@@ -115,6 +115,10 @@ and the current states are
  - Failed (RELION wrote "RELION_JOB_EXIT_FAILURE" to job directory)
  - Finished (job completed successfully)
 
+Processing for certain job types can be turned on or off using
+
+`exa_watcher.py --toggle-job-process {job_type}`
+
 If you prefer slices through the middle of the map, you can set this preference
 in your database with
 
